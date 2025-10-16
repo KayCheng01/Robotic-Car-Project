@@ -39,11 +39,11 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/pico_extras/src/common/pico_audio/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/pico_extras/src/common/pico_scanvideo/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/pico_extras/src/common/pico_sd_card/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/pico_extras/src/common/pico_util_buffer/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/pico_extras/src/common/platypus/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/common/pico_audio/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/common/pico_scanvideo/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/common/pico_sd_card/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/common/pico_util_buffer/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/common/platypus/cmake_install.cmake")
 
 endif()
 

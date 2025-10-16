@@ -1484,7 +1484,7 @@
 				{
 					"directoryIndex" : 45,
 					"id" : "bs2_default::@bc554eaed616d198a22d",
-					"jsonFile" : "target-bs2_default-Debug-a02289e052670a99c86c.json",
+					"jsonFile" : "target-bs2_default-Debug-84bc84eaac8e70677b42.json",
 					"name" : "bs2_default",
 					"projectIndex" : 3
 				},
@@ -1505,7 +1505,7 @@
 				{
 					"directoryIndex" : 102,
 					"id" : "car::@145eef247bfb46b6828c",
-					"jsonFile" : "target-car-Debug-52e7c6474143a5857e29.json",
+					"jsonFile" : "target-car-Debug-05dc5cf87933b4900f7d.json",
 					"name" : "car",
 					"projectIndex" : 0
 				},
@@ -1575,7 +1575,7 @@
 				{
 					"directoryIndex" : 101,
 					"id" : "wifi_lib::@0ed730f5252c4b219aac",
-					"jsonFile" : "target-wifi_lib-Debug-77f18ed08ee71d138b78.json",
+					"jsonFile" : "target-wifi_lib-Debug-33d3cd7cf130a9d31984.json",
 					"name" : "wifi_lib",
 					"projectIndex" : 0
 				}
@@ -1585,8 +1585,8 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build",
-		"source" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project"
+		"build" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build",
+		"source" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project"
 	},
 	"version" : 
 	{

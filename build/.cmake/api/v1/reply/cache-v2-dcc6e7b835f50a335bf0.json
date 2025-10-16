@@ -195,7 +195,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "c:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build"
+			"value" : "c:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -679,7 +679,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/CMakeFiles/pkgRedirects"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/CMakeFiles/pkgRedirects"
 		},
 		{
 			"name" : "CMAKE_GENERATOR",
@@ -739,7 +739,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project"
 		},
 		{
 			"name" : "CMAKE_INSTALL_PREFIX",
@@ -1319,7 +1319,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/FreeRTOS-Kernel-main"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/FreeRTOS-Kernel-main"
 		},
 		{
 			"name" : "FreeRTOS-Kernel_BINARY_DIR",
@@ -1331,7 +1331,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/FREERTOS_KERNEL"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/FREERTOS_KERNEL"
 		},
 		{
 			"name" : "FreeRTOS-Kernel_IS_TOP_LEVEL",
@@ -1355,7 +1355,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/FreeRTOS-Kernel-main/portable/ThirdParty/GCC/RP2040"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/FreeRTOS-Kernel-main/portable/ThirdParty/GCC/RP2040"
 		},
 		{
 			"name" : "MQTT_HOST",
@@ -1799,7 +1799,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build"
 		},
 		{
 			"name" : "ROBOTIC_CAR_PROJECT_IS_TOP_LEVEL",
@@ -1823,7 +1823,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project"
 		},
 		{
 			"name" : "WIFI_PASSWORD",
@@ -1943,7 +1943,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/pico_extras"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras"
 		},
 		{
 			"name" : "pico_extras_IS_TOP_LEVEL",
@@ -1979,7 +1979,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/NgKay/OneDrive/Documents/GitHub/Robotic-Car-Project/build/pico-sdk"
+			"value" : "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk"
 		},
 		{
 			"name" : "pico_sdk_IS_TOP_LEVEL",
