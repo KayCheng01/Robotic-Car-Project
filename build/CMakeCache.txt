@@ -253,18 +253,6 @@ FreeRTOS-Kernel_IS_TOP_LEVEL:STATIC=OFF
 //Value Computed by CMake
 FreeRTOS-Kernel_SOURCE_DIR:STATIC=C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/FreeRTOS-Kernel-main/portable/ThirdParty/GCC/RP2040
 
-//MQTT Broker IP
-MQTT_HOST:STRING=192.168.1.50
-
-//MQTT Broker Port
-MQTT_PORT:STRING=1883
-
-//MQTT publish topic
-MQTT_TOPIC_PUB:STRING=car/telemetry
-
-//MQTT subscribe topic
-MQTT_TOPIC_SUB:STRING=car/cmd
-
 //PICO target board (e.g. pico)
 PICO_BOARD:STRING=pico_w
 
@@ -483,7 +471,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_NM
 CMAKE_NM-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=103
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=106
 //ADVANCED property for variable: CMAKE_OBJCOPY
 CMAKE_OBJCOPY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_OBJDUMP

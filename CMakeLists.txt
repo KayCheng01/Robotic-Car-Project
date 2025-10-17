@@ -41,16 +41,16 @@ if (DEFINED ENV{WIFI_PASSWORD} AND NOT WIFI_PASSWORD)
 endif()
 set(WIFI_SSID "${WIFI_SSID}" CACHE STRING "WiFi SSID")
 set(WIFI_PASSWORD "${WIFI_PASSWORD}" CACHE STRING "WiFi Password")
-set(MQTT_HOST "192.168.1.50" CACHE STRING "MQTT Broker IP")
-set(MQTT_PORT 1883 CACHE STRING "MQTT Broker Port")
-set(MQTT_TOPIC_PUB "car/telemetry" CACHE STRING "MQTT publish topic")
-set(MQTT_TOPIC_SUB "car/cmd" CACHE STRING "MQTT subscribe topic")
+
 
 # ---- Add subdirectories (modular)
 # Each of these folders should contain its own CMakeLists.txt that creates a library
 if (NOT PICO_NO_HARDWARE)
-    add_subdirectory(wifi)       # Main executable lives here
+    add_subdirectory(encoder)
+    add_subdirectory(motor)
     add_subdirectory(src)
+    add_subdirectory(wifi)
+    add_subdirectory(ir)
 endif()
 
 

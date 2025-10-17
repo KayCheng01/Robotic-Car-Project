@@ -1,14 +1,28 @@
-add_executable(car
-  main.c
+add_executable(main
+    main.c
 )
 
-target_link_libraries(car
-  pico_stdlib
-  FreeRTOS-Kernel-Heap4
-  pico_cyw43_arch_lwip_sys_freertos
-  wifi_lib
+# Link the libraries created in motor/ and encoder/
+target_link_libraries(main
+    pico_stdlib
+    FreeRTOS-Kernel
+    FreeRTOS-Kernel-Heap4
+    encoder_lib
+    motor_lib
+    ir_lib
+    hardware_gpio
+    hardware_pwm
+    hardware_timer
 )
 
-pico_enable_stdio_usb(car 1)
-pico_enable_stdio_uart(car 0)
-pico_add_extra_outputs(car)
+# Add include paths for headers
+target_include_directories(main PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}       # src/
+  ${CMAKE_SOURCE_DIR}/encoder     # encoder/
+  ${CMAKE_SOURCE_DIR}/motor       # motor/
+  ${CMAKE_SOURCE_DIR}/freertos_config
+)
+
+pico_enable_stdio_usb(main 1)
+pico_enable_stdio_uart(main 0)
+pico_add_extra_outputs(main)

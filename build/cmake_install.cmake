@@ -42,8 +42,11 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/cmake_install.cmake")
   include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/FREERTOS_KERNEL/cmake_install.cmake")
   include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/wifi/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/encoder/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/motor/cmake_install.cmake")
   include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/src/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/wifi/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ir/cmake_install.cmake")
 
 endif()
 
