@@ -13,31 +13,33 @@
 #include "encoder.h"   // for LEFT/RIGHT, distances, etc.
 
 // ---------------- Pin Map (your request) ----------------
-#define L_MOTOR_IN1 11   // M1A (Left A)   <-- PWM
-#define L_MOTOR_IN2 10   // M1B (Left B)   <-- PWM
-#define R_MOTOR_IN3 8    // M2A (Right A)  <-- PWM
-#define R_MOTOR_IN4 9    // M2B (Right B)  <-- PWM
+#define L_MOTOR_IN1 11   // M1A (Left A)  (PWM for speed when forward)
+#define L_MOTOR_IN2 10   // M1B (Left B)  (LOW for forward, PWM for reverse)
+#define R_MOTOR_IN3 8    // M2A (Right A) (PWM for speed when forward)
+#define R_MOTOR_IN4 9    // M2B (Right B) (LOW for forward, PWM for reverse)
 
 // Optional: if your board has a standby pin, define and wire it; otherwise leave undefined
 // #define MOTOR_STBY 22
 
 // ---------------- PID & PWM constants (tune later) ----------------
-#define Kp 0.80f
-#define Ki 0.00f
+#define Kp 0.0f
+#define Ki 0.0f
 #define Kd 0.00f
 
-#define PWM_MIN_LEFT     3
-#define PWM_MIN_RIGHT    3
-#define PWM_MID_LEFT     5
-#define PWM_MID_RIGHT    5
-#define PWM_MAX_LEFT     10
-#define PWM_MAX_RIGHT    10
-#define PWM_JUMPSTART    6  // a bit higher so wheels can kickstart
+#define Kp_heading 0.0f
+
+#define PWM_MIN_LEFT  120
+#define PWM_MIN_RIGHT 120
+#define PWM_MID_LEFT  160
+#define PWM_MID_RIGHT 160
+#define PWM_MAX_LEFT  255
+#define PWM_MAX_RIGHT 255
+#define PWM_JUMPSTART 120
 
 #define MIN_SPEED                 2.0f
 #define MAX_SPEED                 5.0f
 #define TURN_SPEED                5.0f
-#define JUMPSTART_SPEED_THRESHOLD 2.0f
+#define JUMPSTART_SPEED_THRESHOLD 0.1f
 
 #define PI 3.14159265358979323846
 #define FULL_CIRCLE 360.0f

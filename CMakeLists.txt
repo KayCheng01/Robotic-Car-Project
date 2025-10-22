@@ -51,6 +51,9 @@ if (NOT PICO_NO_HARDWARE)
     add_subdirectory(src)
     add_subdirectory(wifi)
     add_subdirectory(ir)
+    add_subdirectory(imu)
+    add_subdirectory(arch)
+
 endif()
 
 

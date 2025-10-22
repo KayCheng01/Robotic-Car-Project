@@ -227,3 +227,8 @@ C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/wifi/CMakeFiles/rebu
 C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ir/CMakeFiles/ir_lib.dir
 C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ir/CMakeFiles/edit_cache.dir
 C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ir/CMakeFiles/rebuild_cache.dir
+C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/CMakeFiles/imu_lib.dir
+C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/CMakeFiles/edit_cache.dir
+C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/CMakeFiles/rebuild_cache.dir
+C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/arch/CMakeFiles/edit_cache.dir
+C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/arch/CMakeFiles/rebuild_cache.dir
