@@ -1,6 +1,6 @@
 add_executable(main
-    #main.c
-    tcp.c
+    main.c
+    #tcp.c
 )
 
 add_compile_definitions(LWIP_MQTT=1)

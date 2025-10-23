@@ -28,8 +28,8 @@
 
 #define Kp_heading 0.0f
 
-#define PWM_MIN_LEFT  120
-#define PWM_MIN_RIGHT 120
+#define PWM_MIN_LEFT  80
+#define PWM_MIN_RIGHT 80
 #define PWM_MID_LEFT  160
 #define PWM_MID_RIGHT 160
 #define PWM_MAX_LEFT  255
