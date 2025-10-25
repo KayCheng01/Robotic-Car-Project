@@ -230,5 +230,3 @@ C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ir/CMakeFiles/rebuil
 C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/CMakeFiles/imu_lib.dir
 C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/CMakeFiles/edit_cache.dir
 C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/CMakeFiles/rebuild_cache.dir
-C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/arch/CMakeFiles/edit_cache.dir
-C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/arch/CMakeFiles/rebuild_cache.dir

@@ -2,18 +2,18 @@
 
 static inline int is_black(int raw)
 {
-    return IR_BLACK_IS_LOW ? (raw == 1) : (raw == 0);
+    return IR_BLACK_IS_LOW ? (raw == 0) : (raw == 1);
 }
 
 void ir_init(void)
 {
     gpio_init(IR_LEFT_PIN);
     gpio_set_dir(IR_LEFT_PIN, GPIO_IN);
-    gpio_pull_up(IR_LEFT_PIN);
+    //gpio_pull_up(IR_LEFT_PIN);
 
     gpio_init(IR_RIGHT_PIN);
     gpio_set_dir(IR_RIGHT_PIN, GPIO_IN);
-    gpio_pull_up(IR_RIGHT_PIN);
+    //gpio_pull_up(IR_RIGHT_PIN);
 }
 
 int ir_read_left_raw(void)

@@ -223,6 +223,15 @@ void pid_task(void *params) {
         float vL = get_left_speed();
         float vR = get_right_speed();
 
+        float straight_err = (vR - vL);
+        float trim = Kp_heading * straight_err;
+        pwmL += trim;
+        pwmR -= trim;
+
+        // --- compute PID per wheel ---
+        pwmL += compute_pid_pwm(target_speed, vL, &iL, &eL);
+        pwmR += compute_pid_pwm(target_speed, vR, &iR, &eR);
+
         pwmL += compute_pid_pwm(target_speed, vL, &iL, &eL);
         pwmR += compute_pid_pwm(target_speed, vR, &iR, &eR);
 

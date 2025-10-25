@@ -5,7 +5,7 @@
 
 // IR sensor pins (change if needed)
 #define IR_LEFT_PIN   1
-#define IR_RIGHT_PIN  0
+#define IR_RIGHT_PIN  28
 
 // If IR sensor outputs LOW on black line, set to 1
 // If it outputs HIGH on black line, set to 0

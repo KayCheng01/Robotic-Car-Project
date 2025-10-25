@@ -26,7 +26,7 @@
 #define Ki 0.0f
 #define Kd 0.00f
 
-#define Kp_heading 0.0f
+#define Kp_heading 0.10f
 
 #define PWM_MIN_LEFT  80
 #define PWM_MIN_RIGHT 80
