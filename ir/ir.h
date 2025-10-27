@@ -9,7 +9,7 @@
 
 // If IR sensor outputs LOW on black line, set to 1
 // If it outputs HIGH on black line, set to 0
-#define IR_BLACK_IS_LOW  1
+#define IR_BLACK_IS_LOW  0
 
 // Initialize IR sensor GPIOs
 void ir_init(void);

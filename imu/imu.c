@@ -22,20 +22,17 @@ static int wr_then_rd(i2c_inst_t *i2c, uint8_t addr,
 }
 
 static bool acc_init(i2c_inst_t *i2c) {
-    // 100 Hz, all axes on
-    uint8_t w1[2] = { ACC_REG_CTRL1_A, 0x57 };
-    // BDU=1, HR=1, ±2g
-    uint8_t w4[2] = { ACC_REG_CTRL4_A, 0x88 };
+    uint8_t w1[2] = { ACC_REG_CTRL1_A, 0x57 }; // 100 Hz, all axes ON
+    uint8_t w4[2] = { ACC_REG_CTRL4_A, 0x88 }; // BDU=1, HR=1, ±2g
     if (i2c_write_blocking(i2c, IMU_ACC_ADDR, w1, 2, false) != 2) return false;
     if (i2c_write_blocking(i2c, IMU_ACC_ADDR, w4, 2, false) != 2) return false;
     return true;
 }
 
 static bool mag_init(i2c_inst_t *i2c) {
-    // 15 Hz, gain=1.3 Gauss, continuous conversion
-    uint8_t cra[2] = { MAG_REG_CRA_M, 0x10 };
-    uint8_t crb[2] = { MAG_REG_CRB_M, 0x20 };
-    uint8_t mr [2] = { MAG_REG_MR_M,  0x00 };
+    uint8_t cra[2] = { MAG_REG_CRA_M, 0x10 }; // 15 Hz
+    uint8_t crb[2] = { MAG_REG_CRB_M, 0x20 }; // gain 1.3 Gauss
+    uint8_t mr [2] = { MAG_REG_MR_M,  0x00 }; // continuous
     if (i2c_write_blocking(i2c, IMU_MAG_ADDR, cra, 2, false) != 2) return false;
     if (i2c_write_blocking(i2c, IMU_MAG_ADDR, crb, 2, false) != 2) return false;
     if (i2c_write_blocking(i2c, IMU_MAG_ADDR, mr,  2, false) != 2) return false;
@@ -45,7 +42,6 @@ static bool mag_init(i2c_inst_t *i2c) {
 bool imu_init(imu_t *imu) {
     if (!imu) return false;
 
-    // I2C + pins
     i2c_init(imu->i2c, imu->i2c_baud);
     gpio_set_function(imu->pin_sda, GPIO_FUNC_I2C);
     gpio_set_function(imu->pin_scl, GPIO_FUNC_I2C);
@@ -66,13 +62,11 @@ bool imu_read_accel_g(imu_t *imu, float *ax, float *ay, float *az) {
     uint8_t b[6];
     if (wr_then_rd(imu->i2c, IMU_ACC_ADDR, &reg, 1, b, 6) < 0) return false;
 
-    // little-endian: L,H per axis; HR mode → 12-bit in [15:4]
     int16_t x16 = (int16_t)((b[1] << 8) | b[0]);
     int16_t y16 = (int16_t)((b[3] << 8) | b[2]);
     int16_t z16 = (int16_t)((b[5] << 8) | b[4]);
     int16_t x12 = x16 >> 4, y12 = y16 >> 4, z12 = z16 >> 4;
 
-    // ±2g HR sensitivity ≈ 1 mg/LSB → 0.001 g per LSB
     if (ax) *ax = x12 * 0.001f;
     if (ay) *ay = y12 * 0.001f;
     if (az) *az = z12 * 0.001f;
@@ -85,7 +79,6 @@ bool imu_read_mag_raw(imu_t *imu, float *mx, float *my, float *mz) {
     uint8_t b[6];
     if (wr_then_rd(imu->i2c, IMU_MAG_ADDR, &reg, 1, b, 6) < 0) return false;
 
-    // Order is X,Z,Y (H then L)
     int16_t x = (int16_t)((b[0] << 8) | b[1]);
     int16_t z = (int16_t)((b[2] << 8) | b[3]);
     int16_t y = (int16_t)((b[4] << 8) | b[5]);
@@ -98,23 +91,18 @@ bool imu_read_mag_raw(imu_t *imu, float *mx, float *my, float *mz) {
 
 float imu_compute_heading_deg(imu_t *imu, float ax, float ay, float az,
                               float mx, float my, float mz) {
-    // normalize accel to get device orientation
     float na = sqrtf(ax*ax + ay*ay + az*az);
     if (na < 1e-6f) return imu ? imu->heading_deg : 0.f;
     ax /= na; ay /= na; az /= na;
 
-    // remove hard-iron offsets
     if (imu) { mx -= imu->mx_off; my -= imu->my_off; mz -= imu->mz_off; }
 
-    // roll & pitch from accel
     float roll  = atan2f(ay, az);
     float pitch = atan2f(-ax, sqrtf(ay*ay + az*az));
 
-    // tilt compensation
     float mx2 = mx * cosf(pitch) + mz * sinf(pitch);
     float my2 = mx * sinf(roll) * sinf(pitch) + my * cosf(roll) - mz * sinf(roll) * cosf(pitch);
 
-    // heading (adjust sign if your board orientation differs)
     float hdg = atan2f(-my2, mx2) * 180.0f / (float)M_PI;
     if (hdg < 0) hdg += 360.0f;
     if (imu) imu->heading_deg = hdg;

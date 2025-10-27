@@ -1,241 +1,125 @@
 #include "motor.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "encoder.h"   // for distances/speeds used by PID task
 
 // =================== Config tweaks ===================
-#define RIGHT_INVERTED 0   // set to 1 if your right wheel is reversed in hardware
+#define RIGHT_INVERTED 0
 
-// Use the larger of the two maxes as the PWM counter top
 #ifndef PWM_TOP
 #define PWM_TOP ((PWM_MAX_LEFT > PWM_MAX_RIGHT) ? PWM_MAX_LEFT : PWM_MAX_RIGHT)
 #endif
 
-static bool use_pid_control = false;
-static PIDState pid_state = DISABLED;
-static float target_speed = MIN_SPEED;
-static float target_turn_angle = CONTINUOUS_TURN;
+static bool     use_pid_control = false;
+static PIDState pid_state       = PID_DISABLED;
+static float    target_speed    = MIN_SPEED;
+static float    target_turn_angle = CONTINUOUS_TURN;
 
-// =================== Tiny helpers ====================
-static inline void set_pwm_level(uint gpio, uint16_t level) {
-    pwm_set_gpio_level(gpio, level);
-}
+// ---------- helpers ----------
+static inline void set_pwm(uint gpio, uint16_t level){ pwm_set_gpio_level(gpio, level); }
+static inline uint16_t clampL(float v){ if(v<PWM_MIN_LEFT)v=PWM_MIN_LEFT; if(v>PWM_MAX_LEFT)v=PWM_MAX_LEFT; return (uint16_t)v; }
+static inline uint16_t clampR(float v){ if(v<PWM_MIN_RIGHT)v=PWM_MIN_RIGHT; if(v>PWM_MAX_RIGHT)v=PWM_MAX_RIGHT; return (uint16_t)v; }
 
-static inline uint16_t clamp_left(float v) {
-    if (v < PWM_MIN_LEFT)  v = PWM_MIN_LEFT;
-    if (v > PWM_MAX_LEFT)  v = PWM_MAX_LEFT;
-    return (uint16_t)v;
-}
-static inline uint16_t clamp_right(float v) {
-    if (v < PWM_MIN_RIGHT) v = PWM_MIN_RIGHT;
-    if (v > PWM_MAX_RIGHT) v = PWM_MAX_RIGHT;
-    return (uint16_t)v;
-}
+// Left raw
+static inline void L_fwd(uint16_t p){ set_pwm(L_MOTOR_IN1,p); set_pwm(L_MOTOR_IN2,0); }
+static inline void L_rev(uint16_t p){ set_pwm(L_MOTOR_IN1,0); set_pwm(L_MOTOR_IN2,p); }
 
-// Per-wheel raw drive (so turns don’t overwrite the other side)
-static inline void left_forward_raw(uint16_t pwm) {  // A = PWM, B = 0
-    set_pwm_level(L_MOTOR_IN1, pwm);
-    set_pwm_level(L_MOTOR_IN2, 0);
-}
-static inline void left_reverse_raw(uint16_t pwm) {  // A = 0, B = PWM
-    set_pwm_level(L_MOTOR_IN1, 0);
-    set_pwm_level(L_MOTOR_IN2, pwm);
-}
-
-// Right side supports optional inversion
+// Right raw (optionally inverted)
 #if RIGHT_INVERTED
-// "Forward" means B = PWM, A = 0 (inverted wiring)
-static inline void right_forward_raw(uint16_t pwm) {
-    set_pwm_level(R_MOTOR_IN3, 0);
-    set_pwm_level(R_MOTOR_IN4, pwm);
-}
-static inline void right_reverse_raw(uint16_t pwm) {
-    set_pwm_level(R_MOTOR_IN3, pwm);
-    set_pwm_level(R_MOTOR_IN4, 0);
-}
+static inline void R_fwd(uint16_t p){ set_pwm(R_MOTOR_IN3,0); set_pwm(R_MOTOR_IN4,p); }
+static inline void R_rev(uint16_t p){ set_pwm(R_MOTOR_IN3,p); set_pwm(R_MOTOR_IN4,0); }
 #else
-// Normal: A = PWM, B = 0 for forward
-static inline void right_forward_raw(uint16_t pwm) {
-    set_pwm_level(R_MOTOR_IN3, pwm);
-    set_pwm_level(R_MOTOR_IN4, 0);
-}
-static inline void right_reverse_raw(uint16_t pwm) {
-    set_pwm_level(R_MOTOR_IN3, 0);
-    set_pwm_level(R_MOTOR_IN4, pwm);
-}
+static inline void R_fwd(uint16_t p){ set_pwm(R_MOTOR_IN3,p); set_pwm(R_MOTOR_IN4,0); }
+static inline void R_rev(uint16_t p){ set_pwm(R_MOTOR_IN3,0); set_pwm(R_MOTOR_IN4,p); }
 #endif
 
-static void brake_coast(void) {
-    set_pwm_level(L_MOTOR_IN1, 0);
-    set_pwm_level(L_MOTOR_IN2, 0);
-    set_pwm_level(R_MOTOR_IN3, 0);
-    set_pwm_level(R_MOTOR_IN4, 0);
+static void coast(void){ set_pwm(L_MOTOR_IN1,0); set_pwm(L_MOTOR_IN2,0); set_pwm(R_MOTOR_IN3,0); set_pwm(R_MOTOR_IN4,0); }
+
+// ---------- API (manual/PID-neutral) ----------
+void forward_motor(float pl, float pr){ L_fwd(clampL(pl)); R_fwd(clampR(pr)); }
+void reverse_motor(float pl, float pr){ L_rev(clampL(pl)); R_rev(clampR(pr)); }
+
+void turn_motor(int direction, float pl, float pr){
+    uint16_t L = clampL(pl), R = clampR(pr);
+    if (direction == 0/*LEFT*/)  { L_rev(L); R_fwd(R); }
+    else                         { L_fwd(L); R_rev(R); }
 }
 
-// =================== API (manual / PID use) ===================
-void forward_motor(float new_pwm_left, float new_pwm_right) {
-    uint16_t pl = clamp_left(new_pwm_left);
-    uint16_t pr = clamp_right(new_pwm_right);
-    left_forward_raw(pl);
-    right_forward_raw(pr);
-}
+void stop_motor(void){ coast(); }
 
-void reverse_motor(float new_pwm_left, float new_pwm_right) {
-    uint16_t pl = clamp_left(new_pwm_left);
-    uint16_t pr = clamp_right(new_pwm_right);
-    left_reverse_raw(pl);
-    right_reverse_raw(pr);
-}
+// ---------- Friendly wrappers ----------
+void disable_pid_control(void){ use_pid_control = false; }
+void forward_motor_manual(float pl,float pr){ disable_pid_control(); forward_motor(pl,pr); }
+void reverse_motor_manual(float pl,float pr){ disable_pid_control(); reverse_motor(pl,pr); }
 
-void turn_motor(int direction, float new_pwm_left, float new_pwm_right) {
-    // Simple differential turn: one side forward, the other reverse (or lower duty)
-    uint16_t pl = clamp_left(new_pwm_left);
-    uint16_t pr = clamp_right(new_pwm_right);
-
-    if (direction == LEFT) {
-        // left reverse, right forward
-        left_reverse_raw(pl);
-        right_forward_raw(pr);
-    } else {
-        // RIGHT: left forward, right reverse
-        left_forward_raw(pl);
-        right_reverse_raw(pr);
-    }
-}
-
-void stop_motor(void) {
-    brake_coast();
-}
-
-// =================== Manual wrappers ===================
-void disable_pid_control(void) { use_pid_control = false; }
-
-void forward_motor_manual(float new_pwm_left, float new_pwm_right) {
-    disable_pid_control();
-    forward_motor(new_pwm_left, new_pwm_right);
-}
-
-void reverse_motor_manual(float new_pwm_left, float new_pwm_right) {
-    disable_pid_control();
-    reverse_motor(new_pwm_left, new_pwm_right);
-}
-
-void turn_motor_manual(int direction, float angle, float new_pwm_left, float new_pwm_right) {
-    disable_pid_control();
-    turn_motor(direction, new_pwm_left, new_pwm_right);
-    if (angle != CONTINUOUS_TURN) {
-        reset_encoders();
-        while (turn_until_angle(angle)) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
-    }
-}
-
-void stop_motor_manual(void) {
-    disable_pid_control();
-    stop_motor();
-}
-
-void offset_move_motor(int direction, int turn, float offset) {
-    if (offset < 0.0f) offset = 0.0f;
-    if (offset > 1.0f) offset = 1.0f;
-
-    int pwm_left = PWM_MID_LEFT;
-    int pwm_right = PWM_MID_RIGHT;
-    int pwm_left_offset_range  = (PWM_MAX_LEFT  - PWM_MIN_LEFT ) / 2;
-    int pwm_right_offset_range = (PWM_MAX_RIGHT - PWM_MIN_RIGHT) / 2;
-
-    if (turn == LEFT) {
-        pwm_left  -= pwm_left_offset_range  * offset;
-        pwm_right += pwm_right_offset_range * offset;
-    } else if (turn == RIGHT) {
-        pwm_left  += pwm_left_offset_range  * offset;
-        pwm_right -= pwm_right_offset_range * offset;
-    }
-
-    if (direction == FORWARDS)      forward_motor_manual(pwm_left, pwm_right);
-    else if (direction == BACKWARDS) reverse_motor_manual(pwm_left, pwm_right);
-}
-
-// =================== PID interface ===================
-void enable_pid_control(void) { use_pid_control = true; }
-
-void forward_motor_pid(float new_target_speed) {
-    enable_pid_control();
-    target_speed = new_target_speed;
-    pid_state = FORWARD;
-}
-
-void reverse_motor_pid(float new_target_speed) {
-    enable_pid_control();
-    target_speed = new_target_speed;
-    pid_state = REVERSE;
-}
-
-void turn_motor_pid(int direction, float new_target_speed, float new_target_turn_angle) {
-    enable_pid_control();
-    target_speed = new_target_speed;
-    target_turn_angle = new_target_turn_angle;
-    pid_state = (direction == LEFT) ? LEFT_TURN : RIGHT_TURN;
-}
-
-void stop_motor_pid(void) {
-    disable_pid_control();
-    stop_motor();
-    target_speed = 0.0f;
-    pid_state = STOP;
-    enable_pid_control();
-}
-
-// Must call turn_motor and reset encoders before calling this function
-bool turn_until_angle(float angle) {
+bool turn_until_angle(float angle){
     if (angle == CONTINUOUS_TURN) return true;
-    if (angle < 0.0f || angle > FULL_CIRCLE) return false;
-
-    float target_distance = (angle / FULL_CIRCLE) * (PI * WHEEL_TO_WHEEL_DISTANCE);
-    if (target_distance - get_average_distance() <= 0.05f) {
-        if (use_pid_control) stop_motor_pid();
-        else                 stop_motor_manual();
-        return false;
-    }
+    if (angle < 0.f || angle > FULL_CIRCLE) return false;
+    const float target = (angle / FULL_CIRCLE) * (3.14159265358979323846f * WHEEL_TO_WHEEL_DISTANCE);
+    if (target - get_average_distance() <= 0.05f) { stop_motor(); return false; }
     return true;
 }
 
-// =================== PID math & task ===================
-float compute_pid_pwm(float target, float current, float *integral, float *prev_error) {
-    float error = target - current;
-    *integral += error;
-    float derivative = error - *prev_error;
-    float u = Kp * error + Ki * (*integral) + Kd * derivative;
-    *prev_error = error;
-    return u;
+void turn_motor_manual(int direction, float angle, float pl,float pr){
+    disable_pid_control();
+    turn_motor(direction, pl, pr);
+    if (angle != CONTINUOUS_TURN) {
+        reset_encoders();
+        while (turn_until_angle(angle)) { vTaskDelay(pdMS_TO_TICKS(10)); }
+    }
+}
+void stop_motor_manual(void){ disable_pid_control(); stop_motor(); }
+
+void offset_move_motor(int direction, int turn, float offset){
+    if (offset < 0.f) offset = 0.f; if (offset > 1.f) offset = 1.f;
+    int pl = PWM_MID_LEFT, pr = PWM_MID_RIGHT;
+    int lspan = (PWM_MAX_LEFT  - PWM_MIN_LEFT )/2;
+    int rspan = (PWM_MAX_RIGHT - PWM_MIN_RIGHT)/2;
+
+    if (turn == 0/*LEFT*/) { pl -= lspan*offset; pr += rspan*offset; }
+    else                   { pl += lspan*offset; pr -= rspan*offset; }
+
+    if (direction == 1/*FORWARDS*/) forward_motor_manual(pl,pr);
+    else                            reverse_motor_manual(pl,pr);
 }
 
-void pid_task(void *params) {
-    float iL = 0.0f, iR = 0.0f;
-    float eL = 0.0f, eR = 0.0f;
-    float pwmL = PWM_MIN_LEFT, pwmR = PWM_MIN_RIGHT;
-    bool jumpstarted = false;
+// ---------- PID interface (optional) ----------
+void enable_pid_control(void){ use_pid_control = true; }
+void forward_motor_pid(float s){ enable_pid_control(); target_speed = s; pid_state = PID_FWD; }
+void reverse_motor_pid(float s){ enable_pid_control(); target_speed = s; pid_state = PID_REV; }
+void turn_motor_pid(int dir,float s,float ang){ enable_pid_control(); target_speed=s; target_turn_angle=ang; pid_state = (dir==0)?PID_LEFT:PID_RIGHT; }
+void stop_motor_pid(void){ disable_pid_control(); stop_motor(); target_speed=0.f; pid_state=PID_STOP; enable_pid_control(); }
 
-    for (;;) {
-        if (!use_pid_control) { vTaskDelay(pdMS_TO_TICKS(1)); continue; }
+// tiny PID util (kept same signature you used elsewhere)
+float compute_pid_pwm(float target, float current, float *I, float *prev){
+    const float Kp=0.f, Ki=0.f, Kd=0.f; // keep zero unless you tune
+    float e = target - current; *I += e; float d = e - *prev; *prev = e;
+    return Kp*e + Ki*(*I) + Kd*d;
+}
 
-        if (target_speed < MIN_SPEED) pid_state = STOP;
+// Example PID task (yields if disabled)
+void pid_task(void *params){
+    float iL=0.f,iR=0.f, eL=0.f,eR=0.f;
+    float pwmL=PWM_MIN_LEFT, pwmR=PWM_MIN_RIGHT;
+    bool jumpstarted=false;
+
+    for(;;){
+        if(!use_pid_control){ vTaskDelay(pdMS_TO_TICKS(1)); continue; }
+
+        if (target_speed < MIN_SPEED) pid_state = PID_STOP;
         if (target_speed > MAX_SPEED) target_speed = MAX_SPEED;
 
         float vL = get_left_speed();
         float vR = get_right_speed();
 
-        float straight_err = (vR - vL);
-        float trim = Kp_heading * straight_err;
-        pwmL += trim;
-        pwmR -= trim;
-
-        // --- compute PID per wheel ---
-        pwmL += compute_pid_pwm(target_speed, vL, &iL, &eL);
-        pwmR += compute_pid_pwm(target_speed, vR, &iR, &eR);
+        // simple straightness trim from speed mismatch
+        float trim = 0.10f * (vR - vL);
+        pwmL += trim; pwmR -= trim;
 
         pwmL += compute_pid_pwm(target_speed, vL, &iL, &eL);
         pwmR += compute_pid_pwm(target_speed, vR, &iR, &eR);
 
-        if (vL < JUMPSTART_SPEED_THRESHOLD || vR < JUMPSTART_SPEED_THRESHOLD) {
+        if (vL < JUMPSTART_SPEED_THRESHOLD || vR < JUMPSTART_SPEED_THRESHOLD){
             pwmL = PWM_JUMPSTART; pwmR = PWM_JUMPSTART; jumpstarted = true;
         } else {
             if (pwmL < PWM_MIN_LEFT || jumpstarted)  pwmL = PWM_MIN_LEFT;
@@ -247,67 +131,50 @@ void pid_task(void *params) {
             jumpstarted = false;
         }
 
-        switch (pid_state) {
-            case FORWARD:    forward_motor(pwmL, pwmR); break;
-            case REVERSE:    reverse_motor(pwmL, pwmR); break;
-            case LEFT_TURN:  turn_motor(LEFT,  pwmL, pwmR); reset_encoders(); pid_state = TURNING; break;
-            case RIGHT_TURN: turn_motor(RIGHT, pwmL, pwmR); reset_encoders(); pid_state = TURNING; break;
-            case TURNING:    turn_until_angle(target_turn_angle); break;
-            case STOP:       stop_motor(); break;
-            case DISABLED:
-            default:         disable_pid_control(); break;
+        switch (pid_state){
+            case PID_FWD:     forward_motor(pwmL,pwmR); break;
+            case PID_REV:     reverse_motor(pwmL,pwmR); break;
+            case PID_LEFT:    turn_motor(0,pwmL,pwmR); reset_encoders(); pid_state = PID_TURNING; break;
+            case PID_RIGHT:   turn_motor(1,pwmL,pwmR); reset_encoders(); pid_state = PID_TURNING; break;
+            case PID_TURNING: turn_until_angle(target_turn_angle); break;
+            case PID_STOP:    stop_motor(); break;
+            case PID_DISABLED:
+            default:          disable_pid_control(); break;
         }
 
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
-// =================== Hardware init ===================
-void motor_pwm_init(void) {
-    // Put all IN pins into PWM mode (so we can PWM either A or B)
+// ---------- hardware init ----------
+void motor_pwm_init(void){
     gpio_set_function(L_MOTOR_IN1, GPIO_FUNC_PWM);
     gpio_set_function(L_MOTOR_IN2, GPIO_FUNC_PWM);
     gpio_set_function(R_MOTOR_IN3, GPIO_FUNC_PWM);
     gpio_set_function(R_MOTOR_IN4, GPIO_FUNC_PWM);
 
-    // Configure their slices uniformly
     uint slices[4] = {
         pwm_gpio_to_slice_num(L_MOTOR_IN1),
         pwm_gpio_to_slice_num(L_MOTOR_IN2),
         pwm_gpio_to_slice_num(R_MOTOR_IN3),
         pwm_gpio_to_slice_num(R_MOTOR_IN4)
     };
-    for (int i = 0; i < 4; i++) {
-        pwm_set_wrap(slices[i], PWM_TOP);
-        pwm_set_clkdiv(slices[i], 125);
-        pwm_set_enabled(slices[i], true);
-    }
+    for (int i=0;i<4;i++){ pwm_set_wrap(slices[i], PWM_TOP); pwm_set_clkdiv(slices[i], 125); pwm_set_enabled(slices[i], true); }
 
-    brake_coast();
+    coast();
 }
 
-void motor_init(void) {
+void motor_init(void){
 #ifdef MOTOR_STBY
-    gpio_init(MOTOR_STBY);
-    gpio_set_dir(MOTOR_STBY, GPIO_OUT);
-    gpio_put(MOTOR_STBY, 1);
+    gpio_init(MOTOR_STBY); gpio_set_dir(MOTOR_STBY, GPIO_OUT); gpio_put(MOTOR_STBY, 1);
 #endif
-
     motor_pwm_init();
-
-    // Start PID task (safe: yields when disabled)
     xTaskCreate(pid_task, "PID Task", configMINIMAL_STACK_SIZE * 4, NULL, tskIDLE_PRIORITY + 1, NULL);
 }
 
-// Optional conditioning
-void motor_conditioning(void) {
-    printf("[MOTOR/CONDITIONING] Running motor conditioning.\n");
-    stop_motor();
-    forward_motor(PWM_JUMPSTART, PWM_JUMPSTART);
-    sleep_ms(15000);
-    printf("[MOTOR/CONDITIONING] Reversing motor conditioning.\n");
-    reverse_motor(PWM_JUMPSTART, PWM_JUMPSTART);
-    sleep_ms(15000);
-    stop_motor();
-    printf("[MOTOR/CONDITIONING] Motor conditioning complete.\n");
+void motor_conditioning(void){
+    printf("[MOTOR] conditioning...\n");
+    stop_motor(); forward_motor(PWM_JUMPSTART, PWM_JUMPSTART); sleep_ms(15000);
+    reverse_motor(PWM_JUMPSTART, PWM_JUMPSTART); sleep_ms(15000);
+    stop_motor(); printf("[MOTOR] conditioning complete\n");
 }

@@ -1,64 +1,98 @@
 #include <stdio.h>
-#include <math.h>
 #include "pico/stdlib.h"
-#include "imu.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include <math.h>
+
+#include "ir.h"
 #include "motor.h"
 
-#define TURNING_SPEED 80
-#define TURN_TOLERANCE 2.0f
-#define TARGET_TURN_ANGLE 90.0f
+// ====== Tunables ======
+#define LOOP_MS           10          // 100 Hz loop
+#define BASE_PWM          160         // cruising speed
+#define LINE_KP           40.0f       // proportional gain for steering
+#define DIFF_CLAMP        60.0f       // max steering correction (+/-)
+#define SLOW_ON_TURN      12.0f       // reduce base when |err| large (bigger = more slowdown)
 
-static inline float wrap180(float x){
-    while (x > 180.f) x -= 360.f;
-    while (x < -180.f) x += 360.f;
-    return x;
+#define LOST_TIMEOUT_MS   300         // after this long off the line, start recovery
+#define RECOVER_PWM       80          // spin speed while searching
+#define RECOVER_DIR       +1          // +1 spin right, -1 spin left
+
+// ====== Helpers ======
+static inline float clampf(float v, float lo, float hi){ if(v<lo)v=lo; if(v>hi)v=hi; return v; }
+static inline int   clampi(int v, int lo, int hi){ if(v<lo)v=lo; if(v>hi)v=hi; return v; }
+
+// R and L return 1 on black, 0 on white.
+// error = R - L ∈ {-1,0,+1}  (right black → steer left; left black → steer right)
+static inline float line_error(void){
+    int L = ir_left_is_black();
+    int R = ir_right_is_black();
+    return (float)R - (float)L;
 }
 
-int main() {
-    stdio_init_all();
-    sleep_ms(2000);
-
-    imu_t imu;
-    imu.i2c = i2c1;
-    imu.i2c_baud = IMU_I2C_BAUD;
-    imu.pin_sda = IMU_SDA_PIN;
-    imu.pin_scl = IMU_SCL_PIN;
-    imu.mx_off = imu.my_off = imu.mz_off = 0.f;
-    if (!imu_init(&imu)) { 
-        printf("[IMU] init failed\n"); 
-        while (1); 
-    }
-
+static void line_task(void* arg){
+    // --- init subsystems ---
     motor_init();
     disable_pid_control();
 
-    float start_heading = imu_update_and_get_heading(&imu);
-    float target_heading = start_heading + TARGET_TURN_ANGLE;
-    if (target_heading >= 360.0f) target_heading -= 360.0f;
+    ir_init();
 
-    printf("[IMU] Start heading: %.2f°\n", start_heading);
-    printf("[IMU] Target heading: %.2f°\n", target_heading);
-    printf("[IMU] Turning 90 deg right...\n");
+    printf("[LINE] Ready. BASE=%d KP=%.1f CLAMP=%d\n", BASE_PWM, LINE_KP, DIFF_CLAMP);
 
-    while (true) {
-        float hdg = imu_update_and_get_heading(&imu);
-        float err = wrap180(target_heading - hdg);
+    // --- state for “lost line” detection ---
+    absolute_time_t last_seen = get_absolute_time();
 
-        // 🖨️ Print live data
-        printf("hdg=%.2f  err=%.2f  tgt=%.2f\n", hdg, err, target_heading);
+    for(;;){
+        int L = ir_left_is_black();
+        int R = ir_right_is_black();
 
-        if (fabsf(err) < TURN_TOLERANCE) break;
+        if (L || R){
+            // we see the line on at least one sensor → normal follow
+            last_seen = get_absolute_time();
 
-        float turn_KP = 2.0f;
-        float corr = turn_KP * err;
-        if (corr > 60) corr = 60;
-        if (corr < -60) corr = -60;
+            // proportional steering
+            float err  = (float)R - (float)L;               // -1,0,+1 (can be fractional if you later add analog)
+            float diff = clampf(LINE_KP * err, -DIFF_CLAMP, DIFF_CLAMP);
 
-        forward_motor_manual(TURNING_SPEED - corr, TURNING_SPEED + corr);
-        sleep_ms(10);
+            // optional slowdown in tighter turns: lower base when |err| is big
+            float base = (float)BASE_PWM - SLOW_ON_TURN * (float)fabsf(err);
+            if (base < 60) base = 60;                       // don't stall
+
+            int Lp = (int)(base - diff);
+            int Rp = (int)(base + diff);
+
+            forward_motor_manual(Lp, Rp);
+        } else {
+            // both sensors see white → maybe off the line
+            int64_t ms_since = to_ms_since_boot(get_absolute_time()) -
+                               to_ms_since_boot(last_seen);
+
+            if (ms_since < LOST_TIMEOUT_MS) {
+                // brief gap (e.g., crossing)—coast straight a bit
+                forward_motor_manual(BASE_PWM, BASE_PWM);
+            } else {
+                // line lost → spin to search (fixed direction)
+                int s = RECOVER_PWM;
+                if (RECOVER_DIR > 0) {
+                    forward_motor_manual(+s, -s);           // spin right
+                } else {
+                    forward_motor_manual(-s, +s);           // spin left
+                }
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
+}
 
-    stop_motor_manual();
-    printf("[IMU] Turn complete.\n");
-    while (true) sleep_ms(1000);
+int main(void){
+    stdio_init_all();
+    sleep_ms(800);
+    printf("\n[DEMO2-IR] Line-follow only (no barcode, no IMU)\n");
+
+    xTaskCreate(line_task, "line", 1024, NULL, 2, NULL);
+    vTaskStartScheduler();
+
+    while(1){}
+    return 0;
 }
