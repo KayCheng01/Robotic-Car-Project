@@ -159,7 +159,7 @@ void motor_pwm_init(void){
         pwm_gpio_to_slice_num(R_MOTOR_IN3),
         pwm_gpio_to_slice_num(R_MOTOR_IN4)
     };
-    for (int i=0;i<4;i++){ pwm_set_wrap(slices[i], PWM_TOP); pwm_set_clkdiv(slices[i], 125); pwm_set_enabled(slices[i], true); }
+    for (int i=0;i<4;i++){ pwm_set_wrap(slices[i], PWM_TOP); pwm_set_clkdiv(slices[i], 19.53125f); pwm_set_enabled(slices[i], true); }
 
     coast();
 }
