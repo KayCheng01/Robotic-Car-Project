@@ -2,5 +2,11 @@
     "files.associations": {
         "dns.h": "c",
         "mqtt.h": "c"
+    },
+    "cmake.generator": "Ninja",
+    "cmake.cmakePath": "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+    "cmake.configureEnvironment": {
+        "PATH": "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja;${env:PATH}",
+        "PICO_SDK_PATH": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk"
     }
 }
