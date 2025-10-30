@@ -4,10 +4,11 @@ add_executable(main
     #tcp.c
     #demo1.c
     #demo2.c
-    demo2v2.c
+    #demo2v2.c
     #demo2v3.c
     #testDemo1.c
     #testdemo2.c
+    testdemo3.c
 )
 
 add_compile_definitions(LWIP_MQTT=1)
@@ -23,6 +24,7 @@ target_link_libraries(main
     motor_lib
     ir_lib
     barcode_lib
+    ultrasonic_lib
     imu_lib
     hardware_gpio
     hardware_pwm
