@@ -5,14 +5,14 @@
 15573	19123	7827599445354996	motor/CMakeFiles/motor_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_mem_ops/mem_ops_aeabi.S.obj	202d75d3c6b3b1f0
 693	1166	7823374294335183	wifi/CMakeFiles/wifi_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_pll/pll.c.obj	981669a59db003f4
 38	74	7823374286087690	pico-sdk/src/rp2_common/pico_cyw43_driver/cyw43_bus_pio_spi.pio.h	d947da7195d1d021
-3704	4047	7823843567729947	src/CMakeFiles/car.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_cyw43_driver/cybt_shared_bus/cybt_shared_bus.c.obj	a418e3c6cac54f74
 3599	3921	7823374323009805	wifi/CMakeFiles/wifi_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_cyw43_arch/cyw43_arch_threadsafe_background.c.obj	6d143035a3673c08
+3704	4047	7823843567729947	src/CMakeFiles/car.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_cyw43_driver/cybt_shared_bus/cybt_shared_bus.c.obj	a418e3c6cac54f74
 372	813	7823843532730618	src/CMakeFiles/car.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_vreg/vreg.c.obj	8da05f562f075b06
 1890	2579	7823843553006281	src/CMakeFiles/car.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/core/timeouts.c.obj	d248fa6f4cafd69f
 874	1319	7823374295367193	wifi/CMakeFiles/wifi_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_divider/divider.S.obj	b9c1bf224836475d
 1215	1664	7823374300223691	wifi/CMakeFiles/wifi_lib.dir/__/FreeRTOS-Kernel-main/portable/ThirdParty/GCC/RP2040/port.c.obj	6bcf764d6f11bef4
-2028	2859	7832037500973344	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/core/altcp_tcp.c.obj	4dd695bcda3e2672
 2146	2851	7823374311772297	wifi/CMakeFiles/wifi_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/core/ipv6/ip6_addr.c.obj	777b53c9dbee04f0
+2028	2859	7832037500973344	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/core/altcp_tcp.c.obj	4dd695bcda3e2672
 8000	8376	7832037554920227	barcode/CMakeFiles/barcode_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_standard_link/new_delete.cpp.obj	3af343fd383fa41
 2346	2946	7823843555195738	src/CMakeFiles/car.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/api/api_lib.c.obj	66765ce4f06bed5f
 1515	1976	7823843544588030	src/CMakeFiles/car.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_async_context/async_context_base.c.obj	f7d8ec36ec09394e
@@ -122,7 +122,7 @@
 1130	1576	7823374298839057	wifi/CMakeFiles/wifi_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_standard_link/new_delete.cpp.obj	6f14557b60587d12
 586	1113	7832037481906318	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_runtime/runtime.c.obj	e5d39c3e8632ef7
 1198	1647	7823374299667266	wifi/CMakeFiles/wifi_lib.dir/__/FreeRTOS-Kernel-main/portable/MemMang/heap_4.c.obj	7b22b731b0ccde38
-104	552	7832728097587673	motor/CMakeFiles/motor_lib.dir/motor.c.obj	940490a6c3e958a
+43	258	7834248764335147	motor/CMakeFiles/motor_lib.dir/motor.c.obj	940490a6c3e958a
 4452	5426	7832037525559673	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/netif/ppp/ecp.c.obj	91c92d64d4167a3c
 55908	59299	7827599847945133	imu/CMakeFiles/imu_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/common/pico_sync/critical_section.c.obj	fe53c92d1a874b1b
 1229	1686	7823374299399164	wifi/CMakeFiles/wifi_lib.dir/__/FreeRTOS-Kernel-main/croutine.c.obj	d84e4774d0207840
@@ -420,7 +420,7 @@
 12339	16297	7827599414465763	motor/CMakeFiles/motor_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_watchdog/watchdog.c.obj	ccb8b995e3321266
 1314	1760	7823843542797623	src/CMakeFiles/car.dir/__/FreeRTOS-Kernel-main/portable/ThirdParty/GCC/RP2040/port.c.obj	40a2a0ec912a92c1
 13855	17778	7827599429663391	motor/CMakeFiles/motor_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_double/double_init_rom.c.obj	bf7f6f01bc29dade
-51	312	7832749947089241	src/CMakeFiles/main.dir/demo1.c.obj	2813cec7e25430fd
+89	563	7834316512028132	src/CMakeFiles/main.dir/demo1.c.obj	2813cec7e25430fd
 1353	1809	7823843543171087	src/CMakeFiles/car.dir/__/FreeRTOS-Kernel-main/event_groups.c.obj	b405001074e3bf91
 5382	6882	7832037539712004	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/netif/ppp/pppos.c.obj	c9c70a1f5d085b2c
 5360	9042	7827599343223088	encoder/CMakeFiles/encoder_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_int64_ops/pico_int64_ops_aeabi.S.obj	c38f9f2186b3343
@@ -546,7 +546,7 @@
 1514	4658	7827599303862917	encoder/CMakeFiles/encoder_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_irq/irq.c.obj	6b5f18319e42a8b8
 181	601	7823844693821855	src/car.elf	13fe09e664d69391
 6055	9708	7827599349372007	encoder/CMakeFiles/encoder_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_float/float_v1_rom_shim.S.obj	17af75325332c538
-25	1257	7832769046529107	build.ninja	6089b0f51d0478c0
+34	1550	7834981940649546	build.ninja	6089b0f51d0478c0
 895	987	7827599292161360	C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk/src/rp2_common/boot_stage2/bs2_default_padded_checksummed.S	4f8c128ea38b47ff
 85	467	7832728096740120	encoder/CMakeFiles/encoder_lib.dir/encoder.c.obj	35e13a8fef3408f0
 1151	4041	7827599299502172	encoder/CMakeFiles/encoder_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_gpio/gpio.c.obj	6ba29898c84b525
@@ -631,7 +631,7 @@
 710	1233	7832037481224819	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_double/double_aeabi.S.obj	c45ce0837ec50272
 14985	18691	7827599444514308	motor/CMakeFiles/motor_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_float/float_math.c.obj	40ec7d48afaec6c8
 468	807	7832728100164419	encoder/libencoder_lib.a	1d6d4925fbc09681
-807	1060	7832728102700811	motor/libmotor_lib.a	1de9b2a29bd0b5d4
+259	428	7834248766040265	motor/libmotor_lib.a	1de9b2a29bd0b5d4
 16129	19769	7827599452762254	motor/CMakeFiles/motor_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_stdio/stdio.c.obj	af20c0de3afcc07
 16298	19932	7827599453184995	motor/CMakeFiles/motor_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_stdio_uart/stdio_uart.c.obj	b7b494fae75d8c1d
 6737	7364	7832037543020610	src/CMakeFiles/main.dir/__/FreeRTOS-Kernel-main/list.c.obj	ee6fbd172491e173
@@ -654,6 +654,7 @@
 634	1161	7832037480458097	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_bit_ops/bit_ops_aeabi.S.obj	e8000a58b383cd7b
 779	1295	7832037481896349	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_double/double_v1_rom_shim.S.obj	cedf0439b3f0d154
 853	1372	7832037483329011	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_float/float_init_rom.c.obj	9c0d22a436d7f1a7
+81	484	7834334788539407	src/CMakeFiles/main.dir/testdemo2.c.obj	d19533ccdfc8035d
 872	1394	7832037485022551	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_float/float_math.c.obj	dd93a20c0511c957
 7921	8374	7832037553763899	barcode/CMakeFiles/barcode_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_malloc/pico_malloc.c.obj	710fed5e56c33e35
 924	1443	7832037484079332	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_malloc/pico_malloc.c.obj	dc7959aa64999bbd
@@ -683,7 +684,7 @@
 6713	7416	7832037543050620	src/CMakeFiles/main.dir/__/FreeRTOS-Kernel-main/event_groups.c.obj	d41c6f80a65652a6
 6948	7300	7832037544703335	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_adc/adc.c.obj	94bcdd35c2373fe1
 6811	7621	7832037544763320	src/CMakeFiles/main.dir/__/FreeRTOS-Kernel-main/stream_buffer.c.obj	be8beb2ed594a387
-313	812	7832749950036733	src/main.elf	913b6cbb5cfd9786
+416	1269	7834363369241923	src/main.elf	c3ac715d0e381c0
 965	1222	7825044580027625	imu/CMakeFiles/imu.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_standard_link/crt0.S.obj	17787a14f6a95254
 47543	51061	7827599766072243	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_stdlib/stdlib.c.obj	5b0406d8811a3a56
 47716	51215	7827599768454861	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_gpio/gpio.c.obj	daaaba08a71f2757
@@ -697,7 +698,7 @@
 50006	53481	7827599790333398	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/common/pico_util/queue.c.obj	423220929a80a653
 50317	53767	7827599793202968	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_clocks/clocks.c.obj	8c22c217786388b
 50460	53802	7827599794088652	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_pll/pll.c.obj	40e1d3f14bc60c1f
-48	228	7832038401748827	barcode/CMakeFiles/barcode_lib.dir/barcode.c.obj	37592989cc85a06c
+104	406	7834338263946444	barcode/CMakeFiles/barcode_lib.dir/barcode.c.obj	37592989cc85a06c
 50758	54106	7827599797780325	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_watchdog/watchdog.c.obj	e5e03a0c26dce616
 50911	54256	7827599798525868	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_xosc/xosc.c.obj	277682698ef1ba20
 51216	54535	7827599803303039	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_runtime/runtime.c.obj	4f20712885c47027
@@ -711,6 +712,7 @@
 52853	56323	7827599818395841	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_float/float_init_rom.c.obj	ad6c23f4e8b2b1c1
 53142	56593	7827599820636940	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_float/float_v1_rom_shim.S.obj	5dc664e95efd113d
 53481	56882	7827599824058864	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_mem_ops/mem_ops_aeabi.S.obj	455374c6afb2fc8e
+100	415	7834363364751448	src/CMakeFiles/main.dir/testDemo1.c.obj	8530e574158c69a
 53625	57021	7827599825144129	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_standard_link/crt0.S.obj	1427829acc078ce
 53767	57174	7827599823623396	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_standard_link/new_delete.cpp.obj	5de8fddaf76a2f1f
 54106	57587	7827599831686941	ir/CMakeFiles/ir_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_stdio_uart/stdio_uart.c.obj	96b1783ecbc4d4e1
@@ -762,7 +764,7 @@
 56047	59448	7827599853268319	imu/CMakeFiles/imu_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/common/pico_time/time.c.obj	b5862ff7990d8ad0
 56732	60170	7827599858215513	imu/CMakeFiles/imu_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/common/pico_util/queue.c.obj	d39a95ef3935109c
 56883	60330	7827599858875422	imu/CMakeFiles/imu_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_uart/uart.c.obj	1134c83a478c593f
-229	360	7832038403061146	barcode/libbarcode_lib.a	3e979c641ee582fa
+94	265	7834356791830285	barcode/libbarcode_lib.a	3e979c641ee582fa
 57174	60500	7827599861401829	imu/CMakeFiles/imu_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_pll/pll.c.obj	7ba9dc357504c49e
 57318	60641	7827599862589343	imu/CMakeFiles/imu_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_vreg/vreg.c.obj	fc8805ff0c352701
 57617	61094	7827599865829596	imu/CMakeFiles/imu_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_xosc/xosc.c.obj	3cc49337f7fd120e
@@ -848,7 +850,7 @@
 1052	1607	7832037485687363	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_stdio_uart/stdio_uart.c.obj	72f190e2c892a8e
 8304	8488	7832037557573725	barcode/CMakeFiles/barcode_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_exception/exception.c.obj	553a7753b0da6b4c
 44	257	7830081181942839	src/CMakeFiles/main.dir/test.c.obj	c98d629c58ab9bd8
-98	439	7832742194028423	src/CMakeFiles/main.dir/demo2.c.obj	92f20f6fa7a45fe9
+46	248	7833254613298242	src/CMakeFiles/main.dir/demo2.c.obj	92f20f6fa7a45fe9
 7076	7507	7832037545661966	barcode/CMakeFiles/barcode_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_platform/platform.c.obj	a3d2f2bda7c57f2b
 7107	7533	7832037545772010	barcode/CMakeFiles/barcode_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_claim/claim.c.obj	3da2e9ea5225f7bd
 7127	7551	7832037546074235	barcode/CMakeFiles/barcode_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/hardware_sync/sync.c.obj	dc3114509d63f6ca
@@ -873,8 +875,14 @@
 8196	8535	7832037558053671	barcode/CMakeFiles/barcode_lib.dir/__/FreeRTOS-Kernel-main/queue.c.obj	f3011771e3740776
 8321	8545	7832037558173744	barcode/CMakeFiles/barcode_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_multicore/multicore.c.obj	f6eddf7479aaca8a
 8342	8569	7832037558395778	barcode/CMakeFiles/barcode_lib.dir/__/FreeRTOS-Kernel-main/portable/MemMang/heap_4.c.obj	5346aeaa84a5c42b
-21	1003	7832769046529107	build.ninja	6089b0f51d0478c0
-51	299	7832769051000828	src/CMakeFiles/main.dir/demo2.c.obj	92f20f6fa7a45fe9
-300	801	7832769054224162	src/main.elf	5bd93ab3cb500cdd
-48	243	7832770000658255	src/CMakeFiles/main.dir/demo2.c.obj	92f20f6fa7a45fe9
-244	745	7832770003586844	src/main.elf	5bd93ab3cb500cdd
+153	452	7833373976476882	src/CMakeFiles/main.dir/demo2v2.c.obj	c3eb0e8bac86ef64
+46	286	7833759968437649	src/CMakeFiles/main.dir/demo2v3.c.obj	9f587d7f2d6a77ef
+30	1267	7834981940649546	build.ninja	6089b0f51d0478c0
+59	333	7834981946229279	encoder/CMakeFiles/encoder_lib.dir/encoder.c.obj	35e13a8fef3408f0
+71	354	7834981946429271	motor/CMakeFiles/motor_lib.dir/motor.c.obj	940490a6c3e958a
+94	356	7834981946469267	barcode/CMakeFiles/barcode_lib.dir/barcode.c.obj	37592989cc85a06c
+81	370	7834981946469267	src/CMakeFiles/main.dir/demo2v2.c.obj	c3eb0e8bac86ef64
+356	526	7834981948168565	barcode/libbarcode_lib.a	3e979c641ee582fa
+334	526	7834981948178559	encoder/libencoder_lib.a	1d6d4925fbc09681
+526	669	7834981949571050	motor/libmotor_lib.a	1de9b2a29bd0b5d4
+669	1493	7834981954586823	src/main.elf	881647035534c023

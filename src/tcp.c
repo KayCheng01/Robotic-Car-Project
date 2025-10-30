@@ -12,7 +12,7 @@
 #define WIFI_PASS "yo1234567"
 
 #define WIFI_CONNECT_TIMEOUT_MS 20000
-#define BROKER_IP_STR  "172.20.10.3"  // your laptop IP
+#define BROKER_IP_STR  "172.20.10.3"  // your wifi IP
 #define BROKER_PORT    1883
 
 static mqtt_client_t *client;

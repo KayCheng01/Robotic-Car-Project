@@ -362,3 +362,12 @@ int barcode_init()
 
     return 0;
 }
+
+void init_barcode_irq(void) {
+    gpio_set_irq_enabled_with_callback(
+        IR_SENSOR_PIN,
+        GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+        true,
+        &gpio_isr_handler
+    );
+}

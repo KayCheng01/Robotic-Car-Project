@@ -104,7 +104,7 @@ void pid_task(void *params){
     bool jumpstarted=false;
 
     for(;;){
-        if(!use_pid_control){ vTaskDelay(pdMS_TO_TICKS(1)); continue; }
+            if(!use_pid_control){ vTaskDelay(pdMS_TO_TICKS(1)); continue; }
 
         if (target_speed < MIN_SPEED) pid_state = PID_STOP;
         if (target_speed > MAX_SPEED) target_speed = MAX_SPEED;

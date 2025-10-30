@@ -12,7 +12,7 @@
 
 // Sensors
 #define RESET_BUTTON_PIN 22                     // Maker kit button pin
-#define IR_SENSOR_PIN 4                  // IR sensor pin
+#define IR_SENSOR_PIN 26                 // IR sensor pin
 #define DEBOUNCE_DELAY_US 5000            // Debounce delay in microseconds (us)
 
 /* Function Prototypes */
@@ -23,7 +23,8 @@ char decode_scanned_bars();                              // Function to decode s
 void capture_barcode_signal();                           // Function to read from ADC
 void barcode_irq_handler(uint gpio, uint32_t events); // Interrupt callback function
 void gpio_isr_handler(uint gpio, uint32_t events);
-int barcode_init();                  
+int barcode_init();         
+void init_barcode_irq(void);         
 
 extern char decoded_barcode_char;             // Character variable to store scanned and parsed barcode character
 extern volatile bool is_scanning_allowed;     // Boolean to indicate when scanning is allowed
