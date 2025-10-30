@@ -34,7 +34,7 @@ typedef enum {
 static const char* get_status_string(float distance_cm) {
     if (distance_cm < 0.0f) {
         return "OUT_OF_RANGE";
-    } else if (distance_cm <= 20.0f) {
+    } else if (distance_cm <= 30.0f) {
         return "OBSTACLE_FOUND";
     } else if (distance_cm <= 50.0f) {
         return "CLEAR_TO_PROCEED";
@@ -64,8 +64,13 @@ int main(void) {
     printf("\n========================================\n");
     printf("  ULTRASONIC + SERVO INTEGRATION TEST\n");
     printf("========================================\n");
-    printf("Scanning with ultrasonic while sweeping servo\n");
-    printf("Pattern: LEFT (5° steps) → CENTER → RIGHT (5° steps) → CENTER\n");
+    printf("Continuous scanning mode:\n");
+    printf("  CLEAR (>30cm): Servo stops at 90°,\n");
+    printf("                 Ultrasonic continues scanning\n");
+    printf("  OBSTACLE (<=30cm): Delay 2 seconds,\n");
+    printf("                     Servo + Ultrasonic scan\n");
+    printf("                     for clear path,\n");
+    printf("                     Return to 90° when clear\n");
     printf("Output format: [SCAN] Angle | Distance | Pulse | Status\n");
     printf("========================================\n\n");
     
@@ -81,65 +86,123 @@ int main(void) {
     printf("[SCAN] Format: Angle | Distance | Pulse | Status\n");
     printf("========================================\n\n");
     
-    uint32_t cycle = 0;
+    // Initial state: servo at center, in normal scan mode
+    servo_set_angle(90.0f);
+    bool in_obstacle_mode = false;
     
     while (1) {
-        cycle++;
+        // Measure distance at current position
+        float distance_cm = ultrasonic_get_distance_cm();
+        uint16_t pulse_us = estimate_pulse_width(distance_cm);
+        const char* status = get_status_string(distance_cm);
         
-        // ============ LEFT SWEEP (90° → 170° → 90°) ============
-        // Start at center
-        servo_set_angle(90.0f);
-        sleep_ms(300);  // Settle
-        
-        // Sweep left: 90 → 170 in 5° steps
-        for (float angle = 90.0f; angle <= 170.0f; angle += 5.0f) {
-            servo_set_angle(angle);
-            sleep_ms(300);  // Wait for servo and ultrasonic to settle
+        // ============ NORMAL SCANNING MODE (distance > 20cm) ============
+        if (distance_cm > 30.0f && distance_cm < 400.0f) {
+            if (in_obstacle_mode) {
+                // Transitioning back to normal mode
+                printf("[STATUS] Obstacle cleared! Returning to NORMAL SCAN mode\n");
+                printf("[STATUS] Servo parking at CENTER (90°)\n\n");
+                servo_set_angle(90.0f);
+                in_obstacle_mode = false;
+                sleep_ms(500);
+            }
             
-            // Measure distance
-            float distance_cm = ultrasonic_get_distance_cm();
-            uint16_t pulse_us = estimate_pulse_width(distance_cm);
-            const char* status = get_status_string(distance_cm);
-            
-            // Print single-line data
-            printf("[SCAN] %.0f° | %6.1f cm | %4u µs | %s\n",
-                   (double)angle,
+            // In normal mode: servo stays at 90°, ultrasonic keeps scanning
+            printf("[NORMAL] %.0f° | %6.1f cm | %4u µs | %s (Servo IDLE at 90°)\n",
+                   90.0f,
                    (double)distance_cm,
                    pulse_us,
                    status);
             fflush(stdout);
+            sleep_ms(500);  // Continuous ultrasonic scanning
         }
         
-        // Return to center
-        servo_set_angle(90.0f);
-        sleep_ms(300);
-        printf("[SCAN] --- CENTER RETURN ---\n\n");
-        
-        // ============ RIGHT SWEEP (90° → 10° → 90°) ============
-        // Sweep right: 90 → 10 in 5° steps
-        for (float angle = 90.0f; angle >= 10.0f; angle -= 5.0f) {
-            servo_set_angle(angle);
-            sleep_ms(300);  // Wait for servo and ultrasonic to settle
+        // ============ OBSTACLE DETECTED MODE (distance <= 20cm) ============
+        else if (distance_cm <= 30.0f && distance_cm > 0.0f) {
+            if (!in_obstacle_mode) {
+                // First detection: print alert and delay
+                printf("[ALERT] *** OBSTACLE DETECTED at 90° ***\n");
+                printf("[ALERT] Distance: %.1f cm\n", (double)distance_cm);
+                printf("[ALERT] Delaying 2 seconds before avoidance scan...\n");
+                sleep_ms(2000);
+                
+                printf("[ALERT] Triggering AVOIDANCE SCAN MODE\n");
+                in_obstacle_mode = true;
+            }
             
-            // Measure distance
-            float distance_cm = ultrasonic_get_distance_cm();
-            uint16_t pulse_us = estimate_pulse_width(distance_cm);
-            const char* status = get_status_string(distance_cm);
-            
-            // Print single-line data
-            printf("[SCAN] %.0f° | %6.1f cm | %4u µs | %s\n",
-                   (double)angle,
+            // Active avoidance scanning
+            printf("[OBSTACLE] %.0f° | %6.1f cm | %4u µs | %s\n",
+                   90.0f,
                    (double)distance_cm,
                    pulse_us,
                    status);
             fflush(stdout);
+            
+            // Scan left side for clear path
+            printf("[AVOIDANCE] Scanning LEFT side...\n");
+            float best_angle = 90.0f;
+            float best_distance = distance_cm;
+            
+            for (float check_angle = 95.0f; check_angle <= 170.0f; check_angle += 5.0f) {
+                servo_set_angle(check_angle);
+                sleep_ms(250);
+                float check_distance = ultrasonic_get_distance_cm();
+                uint16_t check_pulse = estimate_pulse_width(check_distance);
+                
+                printf("[AVOIDANCE] LEFT: %.0f° | %6.1f cm | %4u µs\n", 
+                       (double)check_angle, (double)check_distance, check_pulse);
+                fflush(stdout);
+                
+                // Track best clear angle (>30cm preferred)
+                if (check_distance > 30.0f && check_distance > best_distance) {
+                    best_distance = check_distance;
+                    best_angle = check_angle;
+                }
+            }
+            
+            // Scan right side for clear path
+            printf("[AVOIDANCE] Scanning RIGHT side...\n");
+            for (float check_angle = 85.0f; check_angle >= 10.0f; check_angle -= 5.0f) {
+                servo_set_angle(check_angle);
+                sleep_ms(250);
+                float check_distance = ultrasonic_get_distance_cm();
+                uint16_t check_pulse = estimate_pulse_width(check_distance);
+                
+                printf("[AVOIDANCE] RIGHT: %.0f° | %6.1f cm | %4u µs\n", 
+                       (double)check_angle, (double)check_distance, check_pulse);
+                fflush(stdout);
+                
+                // Track best clear angle (>30cm preferred)
+                if (check_distance > 30.0f && check_distance > best_distance) {
+                    best_distance = check_distance;
+                    best_angle = check_angle;
+                }
+            }
+            
+            // Move to best angle or stay at center if no clear path
+            if (best_distance > 30.0f && best_angle != 90.0f) {
+                printf("[AVOIDANCE] ✓ Clear path found at %.0f° with %.1f cm\n", 
+                       (double)best_angle, (double)best_distance);
+                servo_set_angle(best_angle);
+                sleep_ms(1000);
+            } else {
+                printf("[AVOIDANCE] ✗ No clear path found, staying at CENTER (90°)\n");
+                servo_set_angle(90.0f);
+                sleep_ms(1000);
+            }
+            printf("[AVOIDANCE] === SCAN COMPLETE ===\n\n");
         }
         
-        // Return to center
-        servo_set_angle(90.0f);
-        sleep_ms(300);
-        printf("[SCAN] --- CENTER RETURN ---\n");
-        printf("[SCAN] === CYCLE %u COMPLETE ===\n\n", (unsigned int)cycle);
+        // ============ OUT OF RANGE ============
+        else {
+            printf("[OUT_RANGE] %.0f° | %6.1f cm | %4u µs | %s\n",
+                   90.0f,
+                   (double)distance_cm,
+                   pulse_us,
+                   status);
+            fflush(stdout);
+            sleep_ms(500);
+        }
     }
     
     return 0;
