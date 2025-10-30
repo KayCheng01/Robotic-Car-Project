@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/motor
+# Install script for directory: C:/Users/caiwe/Robotic-Car-Project/motor
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

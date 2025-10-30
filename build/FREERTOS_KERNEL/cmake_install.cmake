@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/FreeRTOS-Kernel-main/portable/ThirdParty/GCC/RP2040
+# Install script for directory: C:/Users/caiwe/Robotic-Car-Project/FreeRTOS-Kernel-main/portable/ThirdParty/GCC/RP2040
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

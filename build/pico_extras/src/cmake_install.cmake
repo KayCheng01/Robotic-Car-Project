@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/NgKay/Documents/Pico-v1.5.1/pico-extras/src
+# Install script for directory: C:/Users/caiwe/Documents/Pico-v1.5.1/pico-extras/src
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -39,8 +39,8 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/common/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/rp2_common/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/pico_extras/src/common/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/pico_extras/src/rp2_common/cmake_install.cmake")
 
 endif()
 

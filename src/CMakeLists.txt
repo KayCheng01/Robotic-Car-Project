@@ -8,7 +8,19 @@ add_executable(main
     #demo2v3.c
     #testDemo1.c
     #testdemo2.c
-    testdemo3.c
+    #testdemo3.c
+    #demo3_obstacle.c
+    #demo3_line_recovery.c
+    #test_ultrasonic_only.c
+    #test_servo_only.c
+    #test_ultrasonic_servo_combined.c
+    #test_servo_calibration.c
+    #test_servo_manual.c
+    #test_servo_sweep_degrees.c
+    #test_servo_right_sweep.c
+    #test_servo_left_sweep.c
+    #test_servo_symmetric_scan.c
+    test_integration_ultrasonic_servo.c
 )
 
 add_compile_definitions(LWIP_MQTT=1)
@@ -25,6 +37,7 @@ target_link_libraries(main
     ir_lib
     barcode_lib
     ultrasonic_lib
+    servo_lib
     imu_lib
     hardware_gpio
     hardware_pwm
@@ -38,7 +51,9 @@ target_include_directories(main PRIVATE
   ${CMAKE_SOURCE_DIR}/encoder     # encoder/
   ${CMAKE_SOURCE_DIR}/motor       # motor/
   ${CMAKE_SOURCE_DIR}/ir          # ir/
-  ${CMAKE_SOURCE_DIR}/imu         # imu/   
+  ${CMAKE_SOURCE_DIR}/imu         # imu/
+  ${CMAKE_SOURCE_DIR}/ultrasonic  # ultrasonic/
+  ${CMAKE_SOURCE_DIR}/servo       # servo/
   ${CMAKE_SOURCE_DIR}/freertos_config
   ${PICO_SDK_PATH}/src/rp2_common/pico_lwip/include
 

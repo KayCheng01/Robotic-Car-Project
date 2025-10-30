@@ -1,4 +1,4 @@
-// Padded and checksummed version of: C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk/src/rp2_common/boot_stage2/bs2_default.bin
+// Padded and checksummed version of: C:/Users/caiwe/Robotic-Car-Project/build/pico-sdk/src/rp2_common/boot_stage2/bs2_default.bin
 
 .cpu cortex-m0plus
 .thumb
