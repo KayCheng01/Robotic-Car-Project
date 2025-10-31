@@ -9,7 +9,7 @@
 #define OBSTACLE_THRESHOLD_CM       20.0f   // Obstacle detection threshold
 #define PERPENDICULAR_SAMPLES       3       // Number of samples to average perpendicular distance
 #define SERVO_CENTER_ANGLE          90.0f   // Center/perpendicular angle
-#define SERVO_STEP_DEGREE           0.2f    // 0.2-degree increments for precise measurement
+#define SERVO_STEP_DEGREE           1.0f    // 1-degree increments for measurement
 #define SERVO_MIN_ANGLE             10.0f   // Servo minimum angle
 #define SERVO_MAX_ANGLE             170.0f  // Servo maximum angle
 #define MEASUREMENT_DELAY_US        100000  // Delay between measurements (100ms)

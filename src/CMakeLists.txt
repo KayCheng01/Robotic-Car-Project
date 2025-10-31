@@ -9,22 +9,8 @@ add_executable(main
     #testDemo1.c
     #testdemo2.c
     #testdemo3.c
-    #demo3_obstacle.c
-    #demo3_line_recovery.c
-    #test_ultrasonic_only.c
-    #test_servo_only.c
-    #test_ultrasonic_servo_combined.c
-    #test_servo_calibration.c
-    #test_servo_manual.c
-    #test_servo_sweep_degrees.c
-    #test_servo_right_sweep.c
-    #test_servo_left_sweep.c
-    #test_servo_symmetric_scan.c
     #test_integration_ultrasonic_servo.c
-    #test_obstacle_width_measurement.c
-    #test_ultrasonic_calibration.c
-    #test_ultrasonic_calibration_simple.c
-    test_obstacle_width_advanced.c
+    test_obstacle_width_cosine.c
 )
 
 add_compile_definitions(LWIP_MQTT=1)

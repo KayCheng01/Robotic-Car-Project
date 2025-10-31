@@ -12,28 +12,37 @@
  * 1. Detect obstacle at ≤30cm
  * 2. Reconfirm distance (perpendicular distance stored)
  * 3. Sweep servo left/right until transition to CLEAR/OUT_OF_RANGE
- * 4. Store hypotenuse distances at transition points
- * 5. Calculate obstacle width using Pythagorean theorem
+ * 4. Store distances and angles at transition points
+ * 5. Calculate obstacle width using Cosine Rule
  * 
- * Geometry:
- *   perpendicular distance (d) = distance at 90°
- *   hypotenuse left (h_left) = distance at left transition angle
- *   hypotenuse right (h_right) = distance at right transition angle
+ * Geometry (using Cosine Rule):
+ *   c² = a² + b² - 2ab·cos(C)
  *   
- *   Using Pythagorean theorem: a² + b² = c²
- *   horizontal_distance = sqrt(hypotenuse² - perpendicular²)
+ *   For LEFT side:
+ *     a = distance at 90°
+ *     b = distance at left_angle
+ *     C = angle between them (left_angle - 90°)
+ *     c = left_edge_distance (obstacle edge distance)
  *   
- *   obstacle_width = left_horizontal + right_horizontal
+ *   For RIGHT side:
+ *     a = distance at 90°
+ *     b = distance at right_angle
+ *     C = angle between them (90° - right_angle)
+ *     c = right_edge_distance (obstacle edge distance)
+ *   
+ *   obstacle_width = left_edge_distance + right_edge_distance
  */
 
 typedef struct {
-    float perpendicular_distance;      // Distance at 90° (confirmed)
-    float hypotenuse_left;             // Distance at left transition angle
-    float hypotenuse_right;            // Distance at right transition angle
+    float center_distance;             // Distance at 90° (center, confirmed)
+    float distance_left;               // Distance at left transition angle
+    float distance_right;              // Distance at right transition angle
     float left_transition_angle;       // Angle where left side clears obstacle
     float right_transition_angle;      // Angle where right side clears obstacle
-    float left_horizontal_distance;    // Calculated from left side
-    float right_horizontal_distance;   // Calculated from right side
+    float left_angle_delta;            // Angle difference for left: left_angle - 90°
+    float right_angle_delta;           // Angle difference for right: 90° - right_angle
+    float left_edge_distance;          // Calculated using cosine rule (left side)
+    float right_edge_distance;         // Calculated using cosine rule (right side)
     float total_obstacle_width;        // Sum of both sides
 } obstacle_measurement_t;
 
@@ -64,13 +73,30 @@ static uint16_t estimate_pulse_width(float distance_cm) {
 }
 
 /**
- * Calculate horizontal distance using Pythagorean theorem
- * horizontal = sqrt(hypotenuse² - perpendicular²)
+ * Calculate edge distance using Cosine Rule
+ * c² = a² + b² - 2ab·cos(C)
+ * 
+ * @param distance_at_90: distance measured at 90° (side a)
+ * @param distance_at_angle: distance measured at sweep angle (side b)
+ * @param angle_degrees: angle difference from 90° (angle C)
+ * @return: edge distance (side c)
  */
-static float calculate_horizontal_distance(float hypotenuse, float perpendicular) {
-    if (hypotenuse <= perpendicular) return 0.0f;
-    float horizontal_sq = (hypotenuse * hypotenuse) - (perpendicular * perpendicular);
-    return sqrt(horizontal_sq);
+static float calculate_edge_distance_cosine_rule(float distance_at_90, float distance_at_angle, float angle_degrees) {
+    if (distance_at_90 <= 0.0f || distance_at_angle <= 0.0f) return 0.0f;
+    
+    // Convert angle to radians
+    float angle_rad = angle_degrees * (M_PI / 180.0f);
+    
+    // Apply cosine rule: c² = a² + b² - 2ab·cos(C)
+    float a = distance_at_90;
+    float b = distance_at_angle;
+    float cos_c = cosf(angle_rad);
+    
+    float c_squared = (a * a) + (b * b) - (2.0f * a * b * cos_c);
+    
+    if (c_squared < 0.0f) return 0.0f;
+    
+    return sqrtf(c_squared);
 }
 
 int main(void) {
@@ -137,17 +163,17 @@ int main(void) {
                     confirmed_distance += measure;
                 }
                 confirmed_distance /= 3.0f;
-                obstacle_data.perpendicular_distance = confirmed_distance;
+                obstacle_data.center_distance = confirmed_distance;
                 
-                printf("[MEASURE] ✓ Perpendicular distance confirmed: %.1f cm\n\n", 
-                       (double)obstacle_data.perpendicular_distance);
+                printf("[MEASURE] ✓ Center distance confirmed: %.1f cm\n\n", 
+                       (double)obstacle_data.center_distance);
                 
                 printf("[MEASURE] Step 2: LEFT SWEEP - Finding transition point\n");
-                printf("[MEASURE] Scanning from 90° → 170° for clear path\n");
+                printf("[MEASURE] Scanning from 90° → 170° for clear path (1° increments)\n");
                 
                 // LEFT SWEEP: Find transition point where obstacle clears
                 bool left_transition_found = false;
-                for (float angle = 95.0f; angle <= 170.0f; angle += 5.0f) {
+                for (float angle = 91.0f; angle <= 170.0f; angle += 1.0f) {
                     servo_set_angle(angle);
                     sleep_ms(300);
                     
@@ -167,32 +193,41 @@ int main(void) {
                         printf("[LEFT_TRANSITION] ✓ Found at %.0f° with %.1f cm\n", 
                                (double)angle, (double)sweep_distance);
                         obstacle_data.left_transition_angle = angle;
-                        obstacle_data.hypotenuse_left = sweep_distance;
+                        obstacle_data.distance_left = sweep_distance;
+                        obstacle_data.left_angle_delta = angle - 90.0f;
                         left_transition_found = true;
                     }
                 }
                 
                 if (left_transition_found) {
-                    printf("[CALCULATE] LEFT: hypotenuse=%.1f cm, perpendicular=%.1f cm\n",
-                           (double)obstacle_data.hypotenuse_left,
-                           (double)obstacle_data.perpendicular_distance);
+                    printf("[CALCULATE] LEFT: distance_at_90°=%.1f cm, distance_at_%.0f°=%.1f cm, angle_delta=%.0f°\n",
+                           (double)obstacle_data.center_distance,
+                           (double)obstacle_data.left_transition_angle,
+                           (double)obstacle_data.distance_left,
+                           (double)obstacle_data.left_angle_delta);
                     
-                    obstacle_data.left_horizontal_distance = calculate_horizontal_distance(
-                        obstacle_data.hypotenuse_left,
-                        obstacle_data.perpendicular_distance
+                    obstacle_data.left_edge_distance = calculate_edge_distance_cosine_rule(
+                        obstacle_data.center_distance,
+                        obstacle_data.distance_left,
+                        obstacle_data.left_angle_delta
                     );
                     
-                    printf("[CALCULATE] LEFT: horizontal_distance = √(%.1f² - %.1f²) = %.1f cm\n",
-                           (double)obstacle_data.hypotenuse_left,
-                           (double)obstacle_data.perpendicular_distance,
-                           (double)obstacle_data.left_horizontal_distance);
+                    printf("[CALCULATE] LEFT: Using cosine rule c²=a²+b²-2ab·cos(C)\n");
+                    printf("[CALCULATE] LEFT: c² = %.1f² + %.1f² - 2·%.1f·%.1f·cos(%.0f°)\n",
+                           (double)obstacle_data.center_distance,
+                           (double)obstacle_data.distance_left,
+                           (double)obstacle_data.center_distance,
+                           (double)obstacle_data.distance_left,
+                           (double)obstacle_data.left_angle_delta);
+                    printf("[CALCULATE] LEFT: edge_distance = %.1f cm\n",
+                           (double)obstacle_data.left_edge_distance);
                 } else {
                     printf("[LEFT_SWEEP] ✗ No clear path found on left side\n");
-                    obstacle_data.left_horizontal_distance = 0.0f;
+                    obstacle_data.left_edge_distance = 0.0f;
                 }
                 
                 printf("\n[MEASURE] Step 3: RIGHT SWEEP - Finding transition point\n");
-                printf("[MEASURE] Scanning from 90° → 10° for clear path\n");
+                printf("[MEASURE] Scanning from 90° → 10° for clear path (1° increments)\n");
                 
                 // Return to center first
                 servo_set_angle(90.0f);
@@ -200,7 +235,7 @@ int main(void) {
                 
                 // RIGHT SWEEP: Find transition point where obstacle clears
                 bool right_transition_found = false;
-                for (float angle = 85.0f; angle >= 10.0f; angle -= 5.0f) {
+                for (float angle = 89.0f; angle >= 10.0f; angle -= 1.0f) {
                     servo_set_angle(angle);
                     sleep_ms(300);
                     
@@ -220,55 +255,68 @@ int main(void) {
                         printf("[RIGHT_TRANSITION] ✓ Found at %.0f° with %.1f cm\n", 
                                (double)angle, (double)sweep_distance);
                         obstacle_data.right_transition_angle = angle;
-                        obstacle_data.hypotenuse_right = sweep_distance;
+                        obstacle_data.distance_right = sweep_distance;
+                        obstacle_data.right_angle_delta = 90.0f - angle;
                         right_transition_found = true;
                     }
                 }
                 
                 if (right_transition_found) {
-                    printf("[CALCULATE] RIGHT: hypotenuse=%.1f cm, perpendicular=%.1f cm\n",
-                           (double)obstacle_data.hypotenuse_right,
-                           (double)obstacle_data.perpendicular_distance);
+                    printf("[CALCULATE] RIGHT: distance_at_90°=%.1f cm, distance_at_%.0f°=%.1f cm, angle_delta=%.0f°\n",
+                           (double)obstacle_data.center_distance,
+                           (double)obstacle_data.right_transition_angle,
+                           (double)obstacle_data.distance_right,
+                           (double)obstacle_data.right_angle_delta);
                     
-                    obstacle_data.right_horizontal_distance = calculate_horizontal_distance(
-                        obstacle_data.hypotenuse_right,
-                        obstacle_data.perpendicular_distance
+                    obstacle_data.right_edge_distance = calculate_edge_distance_cosine_rule(
+                        obstacle_data.center_distance,
+                        obstacle_data.distance_right,
+                        obstacle_data.right_angle_delta
                     );
                     
-                    printf("[CALCULATE] RIGHT: horizontal_distance = √(%.1f² - %.1f²) = %.1f cm\n",
-                           (double)obstacle_data.hypotenuse_right,
-                           (double)obstacle_data.perpendicular_distance,
-                           (double)obstacle_data.right_horizontal_distance);
+                    printf("[CALCULATE] RIGHT: Using cosine rule c²=a²+b²-2ab·cos(C)\n");
+                    printf("[CALCULATE] RIGHT: c² = %.1f² + %.1f² - 2·%.1f·%.1f·cos(%.0f°)\n",
+                           (double)obstacle_data.center_distance,
+                           (double)obstacle_data.distance_right,
+                           (double)obstacle_data.center_distance,
+                           (double)obstacle_data.distance_right,
+                           (double)obstacle_data.right_angle_delta);
+                    printf("[CALCULATE] RIGHT: edge_distance = %.1f cm\n",
+                           (double)obstacle_data.right_edge_distance);
                 } else {
                     printf("[RIGHT_SWEEP] ✗ No clear path found on right side\n");
-                    obstacle_data.right_horizontal_distance = 0.0f;
+                    obstacle_data.right_edge_distance = 0.0f;
                 }
                 
                 // ============ CALCULATE TOTAL OBSTACLE WIDTH ============
-                obstacle_data.total_obstacle_width = obstacle_data.left_horizontal_distance + 
-                                                    obstacle_data.right_horizontal_distance;
+                obstacle_data.total_obstacle_width = obstacle_data.left_edge_distance + 
+                                                    obstacle_data.right_edge_distance;
                 
                 printf("\n╔════════════════════════════════════╗\n");
                 printf("║    OBSTACLE MEASUREMENT RESULT     ║\n");
                 printf("╠════════════════════════════════════╣\n");
-                printf("║ Perpendicular Distance: %6.1f cm ║\n", 
-                       (double)obstacle_data.perpendicular_distance);
+                printf("║ Center Distance: %6.1f cm        ║\n", 
+                       (double)obstacle_data.center_distance);
                 printf("║                                    ║\n");
-                printf("║ LEFT SIDE:                         ║\n");
+                printf("║ LEFT SIDE (Cosine Rule):          ║\n");
                 printf("║   Transition Angle: %5.0f°         ║\n", 
                        (double)obstacle_data.left_transition_angle);
-                printf("║   Hypotenuse: %6.1f cm            ║\n", 
-                       (double)obstacle_data.hypotenuse_left);
-                printf("║   Horizontal: %6.1f cm            ║\n", 
-                       (double)obstacle_data.left_horizontal_distance);
+                printf("║   Distance at angle: %6.1f cm     ║\n", 
+                       (double)obstacle_data.distance_left);
+                printf("║   Angle delta: %5.0f°              ║\n", 
+                       (double)obstacle_data.left_angle_delta);
+                printf("║   Edge distance: %6.1f cm         ║\n", 
+                       (double)obstacle_data.left_edge_distance);
                 printf("║                                    ║\n");
-                printf("║ RIGHT SIDE:                        ║\n");
+                printf("║ RIGHT SIDE (Cosine Rule):         ║\n");
                 printf("║   Transition Angle: %5.0f°         ║\n", 
                        (double)obstacle_data.right_transition_angle);
-                printf("║   Hypotenuse: %6.1f cm            ║\n", 
-                       (double)obstacle_data.hypotenuse_right);
-                printf("║   Horizontal: %6.1f cm            ║\n", 
-                       (double)obstacle_data.right_horizontal_distance);
+                printf("║   Distance at angle: %6.1f cm     ║\n", 
+                       (double)obstacle_data.distance_right);
+                printf("║   Angle delta: %5.0f°              ║\n", 
+                       (double)obstacle_data.right_angle_delta);
+                printf("║   Edge distance: %6.1f cm         ║\n", 
+                       (double)obstacle_data.right_edge_distance);
                 printf("║                                    ║\n");
                 printf("║ ★ OBSTACLE WIDTH: %6.1f cm ★    ║\n", 
                        (double)obstacle_data.total_obstacle_width);
