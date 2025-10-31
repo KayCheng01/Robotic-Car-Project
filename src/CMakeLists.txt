@@ -20,7 +20,11 @@ add_executable(main
     #test_servo_right_sweep.c
     #test_servo_left_sweep.c
     #test_servo_symmetric_scan.c
-    test_integration_ultrasonic_servo.c
+    #test_integration_ultrasonic_servo.c
+    #test_obstacle_width_measurement.c
+    #test_ultrasonic_calibration.c
+    #test_ultrasonic_calibration_simple.c
+    test_obstacle_width_advanced.c
 )
 
 add_compile_definitions(LWIP_MQTT=1)
