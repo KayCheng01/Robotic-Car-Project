@@ -5,7 +5,7 @@
 #define TRACK_WIDTH_M        0.115f   // wheel center-to-center (meters)
 
 // ================= Target Speed ===================
-#define V_TARGET_MPS         0.20f
+#define V_TARGET_MPS         0.10f
 #define V_TARGET_CMPS        (V_TARGET_MPS * 100.0f)
 
 // ================= IMU Outer PID ==================

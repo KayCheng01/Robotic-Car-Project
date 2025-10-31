@@ -53,6 +53,8 @@ if (NOT PICO_NO_HARDWARE)
     add_subdirectory(ir)
     add_subdirectory(imu)
     add_subdirectory(barcode)
+    add_subdirectory(ultrasonic)
+    add_subdirectory(servo)
 
 endif()
 

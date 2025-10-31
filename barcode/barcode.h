@@ -12,7 +12,7 @@
 
 // Sensors
 #define RESET_BUTTON_PIN 22                     // Maker kit button pin
-#define IR_SENSOR_PIN 26                 // IR sensor pin
+#define IR_SENSOR_PIN     7                 // IR sensor pin
 #define DEBOUNCE_DELAY_US 5000            // Debounce delay in microseconds (us)
 
 /* Function Prototypes */
