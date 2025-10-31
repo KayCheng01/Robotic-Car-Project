@@ -6,12 +6,12 @@
 #include "../servo/servo.h"
 
 // ============== Configuration ==============
-#define OBSTACLE_THRESHOLD_CM           20.0f   // Obstacle detection threshold
+#define OBSTACLE_THRESHOLD_CM           25.0f   // Obstacle detection threshold
 #define PERPENDICULAR_SAMPLES           3       // Number of samples to average perpendicular distance
 #define SERVO_CENTER_ANGLE              90.0f   // Center/perpendicular angle
 #define SERVO_RIGHT_ANGLE               10.0f   // Max right angle
 #define SERVO_LEFT_ANGLE                170.0f  // Max left angle
-#define SERVO_STEP_DEGREE               1.0f    // 1-degree increments
+#define SERVO_STEP_DEGREE               0.5f    // 0.5-degree increments
 #define MEASUREMENT_DELAY_MS            200     // Delay between measurements (200ms)
 #define EDGE_DETECTION_THRESHOLD_CM     5.0f    // When distance is within this of perpendicular, it's considered edge
 
@@ -53,30 +53,34 @@ float get_perpendicular_distance(void) {
 }
 
 /**
- * Calculate object width using cosine rule
- * c² = a² + b² - 2ab·cos(C)
+ * Calculate object width component using Pythagorean theorem
+ * When the servo sweeps to an angle, the ultrasonic measures the hypotenuse
+ * of a right triangle where perpendicular distance is one leg and width is the other.
  * 
- * @param perp_dist: perpendicular distance at 90°
- * @param angle_dist: distance at sweep angle
- * @param angle_deg: angle difference from 90°
+ * width = sqrt(hypotenuse² - perpendicular²)
+ * 
+ * @param perp_dist: perpendicular distance at 90° (one leg)
+ * @param hypotenuse_dist: distance at sweep angle (hypotenuse)
  * @return: object width component
  */
-float calculate_width_cosine_rule(float perp_dist, float angle_dist, float angle_deg) {
-    if (perp_dist <= 0.0f || angle_dist <= 0.0f) return 0.0f;
+float calculate_width_cosine_rule(float perp_dist, float hypotenuse_dist, float angle_deg) {
+    (void)angle_deg;  // Angle not needed for Pythagorean theorem
     
-    // Convert angle to radians
-    float angle_rad = angle_deg * (M_PI / 180.0f);
+    if (perp_dist <= 0.0f || hypotenuse_dist <= 0.0f) return 0.0f;
     
-    // Apply cosine rule: c² = a² + b² - 2ab·cos(C)
-    float a = perp_dist;
-    float b = angle_dist;
-    float cos_c = cosf(angle_rad);
+    // Pythagorean theorem: width = sqrt(hypotenuse² - perpendicular²)
+    float h_sq = hypotenuse_dist * hypotenuse_dist;
+    float p_sq = perp_dist * perp_dist;
     
-    float c_squared = (a * a) + (b * b) - (2.0f * a * b * cos_c);
+    if (h_sq < p_sq) {
+        // Hypotenuse should never be less than perpendicular distance
+        printf("    [WARNING] Hypotenuse (%.2f) < perpendicular (%.2f), returning 0\n", 
+               hypotenuse_dist, perp_dist);
+        return 0.0f;
+    }
     
-    if (c_squared < 0.0f) return 0.0f;
-    
-    return sqrtf(c_squared);
+    float width = sqrtf(h_sq - p_sq);
+    return width;
 }
 
 /**
@@ -220,9 +224,10 @@ void print_measurement_results(obstacle_measurement_t *measurement) {
     printf("  Angle difference from 90°: %.1f°\n\n", 
            measurement->left_edge_angle - 90.0f);
     
-    printf("CALCULATED OBJECT WIDTH (using Cosine Rule):\n");
-    printf("  Formula: c² = a² + b² - 2ab·cos(C)\n");
-    printf("  Where a = perp dist, b = edge dist, C = angle diff\n\n");
+    printf("CALCULATED OBJECT WIDTH (using Pythagorean Theorem):\n");
+    printf("  Formula: width = sqrt(hypotenuse² - perpendicular²)\n");
+    printf("  Where hypotenuse = distance at sweep angle\n");
+    printf("        perpendicular = distance at 90°\n\n");
     
     // Calculate right width component
     float right_angle_diff = 90.0f - measurement->right_edge_angle;
