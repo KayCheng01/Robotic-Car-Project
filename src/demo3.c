@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <math.h>
 #include "pico/stdlib.h"
-#include "../ultrasonic/ultrasonic.h"
-#include "../servo/servo.h"
+#include "ultrasonic.h"
+#include "servo.h"
 
 // ============== Configuration ==============
-#define OBSTACLE_THRESHOLD_CM           25.0f   // Obstacle detection threshold
+#define OBSTACLE_THRESHOLD_CM           30.0f   // Obstacle detection threshold
 #define SERVO_CENTER_ANGLE              90.0f   // Center/perpendicular angle
 #define SERVO_RIGHT_ANGLE               150.0f  // Max right angle
 #define SERVO_LEFT_ANGLE                35.0f   // Max left angle

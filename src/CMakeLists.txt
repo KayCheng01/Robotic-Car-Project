@@ -1,10 +1,10 @@
 add_executable(main
     #main.c
     #main_constant_speed.c
-    #tcp.c
+    tcp.c
     #demo1.c
     #demo2.c
-    demo3.c
+    #demo3.c
     #demo2v2.c
     #demo2v3.c
     #testDemo1.c
@@ -25,6 +25,8 @@ target_link_libraries(main
     ir_lib
     barcode_lib
     imu_lib
+    ultrasonic_lib
+    servo_lib
     hardware_gpio
     hardware_pwm
     hardware_timer
@@ -37,7 +39,10 @@ target_include_directories(main PRIVATE
   ${CMAKE_SOURCE_DIR}/encoder     # encoder/
   ${CMAKE_SOURCE_DIR}/motor       # motor/
   ${CMAKE_SOURCE_DIR}/ir          # ir/
-  ${CMAKE_SOURCE_DIR}/imu         # imu/   
+  ${CMAKE_SOURCE_DIR}/imu         # imu/
+  ${CMAKE_SOURCE_DIR}/barcode     # barcode/
+  ${CMAKE_SOURCE_DIR}/ultrasonic  # ultrasonic/ 
+  ${CMAKE_SOURCE_DIR}/servo       # servo/   
   ${CMAKE_SOURCE_DIR}/freertos_config
   ${PICO_SDK_PATH}/src/rp2_common/pico_lwip/include
 
