@@ -9,12 +9,13 @@
 #define SERVO_CENTER_ANGLE              90.0f   // Center/perpendicular angle
 #define SERVO_RIGHT_ANGLE               150.0f  // Max right angle
 #define SERVO_LEFT_ANGLE                35.0f   // Max left angle
-#define SERVO_STEP_DEGREE               1.0f    // Fast scanning: 1 degree increments
-#define SERVO_FINE_STEP_DEGREE          0.5f    // Fine scanning after edge found
+#define SERVO_SCAN_STEP_DEGREE          1.0f    // Fast scanning: 1 degree increments
+#define SERVO_REFINE_STEP_DEGREE        0.5f    // Fine scanning: 0.5 degree increments
 #define MEASUREMENT_DELAY_MS            50      // Fast delay: 50ms between measurements
-#define EDGE_CONFIRM_DELAY_MS           2000    // 2 second delay for edge confirmation
+#define REFINEMENT_DELAY_MS             2000    // 2 second delay for refinement
 #define MAX_DETECTION_DISTANCE_CM       100.0f  // Maximum valid echo distance
 #define EDGE_CONFIRMATION_SAMPLES       5       // Number of samples to confirm edge detection
+#define CONSISTENCY_THRESHOLD_CM        10.0f   // Maximum variation for consistent samples
 
 // ============== Data Structures ==============
 typedef struct {
@@ -50,8 +51,49 @@ float calculate_width_component(float adjacent, float hypotenuse) {
 }
 
 /**
+ * Take samples and check consistency
+ */
+bool take_consistent_samples(float *avg_distance_out) {
+    float samples[EDGE_CONFIRMATION_SAMPLES];
+    int valid_samples = 0;
+    
+    for (int i = 0; i < EDGE_CONFIRMATION_SAMPLES; i++) {
+        sleep_ms(100);
+        float sample = ultrasonic_get_distance_cm();
+        
+        if (sample > 0 && sample <= MAX_DETECTION_DISTANCE_CM) {
+            samples[valid_samples] = sample;
+            valid_samples++;
+            printf("      Sample %d: %.2f cm\n", i + 1, sample);
+        } else {
+            printf("      Sample %d: invalid\n", i + 1);
+        }
+    }
+    
+    if (valid_samples < 3) {
+        return false;
+    }
+    
+    // Check consistency
+    float min_sample = 999.0f;
+    float max_sample = 0.0f;
+    float sum = 0.0f;
+    
+    for (int i = 0; i < valid_samples; i++) {
+        sum += samples[i];
+        if (samples[i] < min_sample) min_sample = samples[i];
+        if (samples[i] > max_sample) max_sample = samples[i];
+    }
+    
+    float variation = max_sample - min_sample;
+    *avg_distance_out = sum / valid_samples;
+    
+    return (variation <= CONSISTENCY_THRESHOLD_CM);
+}
+
+/**
  * Scan LEFT SIDE: Start at 35°, scan toward 90° until echo detected
- * When echo found, move back in 0.5° increments until edge no longer detected
+ * Then refine by moving back and confirming edge
  * 
  * @param adjacent: perpendicular distance (adjacent length)
  * @return: left width component
@@ -68,124 +110,65 @@ float scan_left_side(float adjacent) {
     float current_angle = SERVO_LEFT_ANGLE;
     float left_width = 0.0f;
     bool edge_found = false;
-    float edge_angle = 0.0f;
     float edge_distance = 0.0f;
     
+    // Fast scan to find edge
     while (current_angle <= SERVO_CENTER_ANGLE && !edge_found) {
         servo_set_angle(current_angle);
         sleep_ms(MEASUREMENT_DELAY_MS);
         
         float distance = ultrasonic_get_distance_cm();
         
-        // Check if echo detected (valid distance reading)
         if (distance > 0 && distance <= MAX_DETECTION_DISTANCE_CM) {
-            // ECHO FOUND - Take multiple readings to confirm
-            printf("[LEFT_SCAN] %.1f° │ ✓ ECHO FOUND! Taking %d confirmation samples...\n", 
-                   current_angle, EDGE_CONFIRMATION_SAMPLES);
+            printf("[LEFT_SCAN] %.1f° │ ✓ ECHO! Confirming...\n", current_angle);
             
-            float samples[EDGE_CONFIRMATION_SAMPLES];
-            int valid_samples = 0;
-            
-            for (int i = 0; i < EDGE_CONFIRMATION_SAMPLES; i++) {
-                sleep_ms(100);
-                float sample = ultrasonic_get_distance_cm();
-                
-                if (sample > 0 && sample <= MAX_DETECTION_DISTANCE_CM) {
-                    samples[valid_samples] = sample;
-                    valid_samples++;
-                    printf("[LEFT_SCAN]   Sample %d: %.2f cm\n", i + 1, sample);
-                } else {
-                    printf("[LEFT_SCAN]   Sample %d: invalid\n", i + 1);
-                }
-            }
-            
-            // Check consistency: samples shouldn't vary by more than 10cm
-            bool consistent = true;
-            float min_sample = 999.0f;
-            float max_sample = 0.0f;
-            float sum = 0.0f;
-            
-            for (int i = 0; i < valid_samples; i++) {
-                sum += samples[i];
-                if (samples[i] < min_sample) min_sample = samples[i];
-                if (samples[i] > max_sample) max_sample = samples[i];
-            }
-            
-            float variation = max_sample - min_sample;
-            if (variation > 10.0f) {
-                consistent = false;
-            }
-            
-            if (valid_samples >= 3 && consistent) {  // Need at least 3 valid samples AND consistency
-                float avg_distance = sum / valid_samples;
-                printf("[LEFT_SCAN] ✓✓✓ INITIAL EDGE FOUND! Average: %.2f cm (%d valid samples, variation: %.2f cm)\n", 
-                       avg_distance, valid_samples, variation);
-                
-                edge_angle = current_angle;
-                edge_distance = avg_distance;
-                
-                // Now move back in 0.5° increments to find precise edge
-                printf("\n[LEFT_SCAN] Moving back in %.1f° increments to refine edge...\n", SERVO_FINE_STEP_DEGREE);
-                
-                while (current_angle >= SERVO_LEFT_ANGLE) {
-                    current_angle -= SERVO_FINE_STEP_DEGREE;
-                    servo_set_angle(current_angle);
-                    
-                    printf("[LEFT_SCAN] Testing at %.1f°, waiting %d seconds...\n", current_angle, EDGE_CONFIRM_DELAY_MS/1000);
-                    sleep_ms(EDGE_CONFIRM_DELAY_MS);
-                    
-                    // Take samples
-                    float test_sum = 0.0f;
-                    int test_valid = 0;
-                    printf("[LEFT_SCAN] Taking %d samples...\n", EDGE_CONFIRMATION_SAMPLES);
-                    
-                    for (int i = 0; i < EDGE_CONFIRMATION_SAMPLES; i++) {
-                        sleep_ms(100);
-                        float sample = ultrasonic_get_distance_cm();
-                        if (sample > 0 && sample <= MAX_DETECTION_DISTANCE_CM) {
-                            test_sum += sample;
-                            test_valid++;
-                            printf("[LEFT_SCAN]   Sample %d: %.2f cm\n", i + 1, sample);
-                        }
-                    }
-                    
-                    if (test_valid >= 3) {
-                        float test_avg = test_sum / test_valid;
-                        printf("[LEFT_SCAN] Average: %.2f cm - EDGE STILL DETECTED, updating edge position\n", test_avg);
-                        edge_angle = current_angle;
-                        edge_distance = test_avg;
-                    } else {
-                        printf("[LEFT_SCAN] ✗ EDGE NO LONGER DETECTED at %.1f°\n", current_angle);
-                        printf("[LEFT_SCAN] Final edge angle: %.1f°\n", edge_angle);
-                        break;
-                    }
-                }
-                
-                float angle_from_center = SERVO_CENTER_ANGLE - edge_angle;
-                left_width = calculate_width_component(adjacent, edge_distance);
-                
-                printf("\n[LEFT_SCAN] FINAL EDGE RESULTS:\n");
-                printf("[LEFT_SCAN] Edge angle: %.1f°\n", edge_angle);
-                printf("[LEFT_SCAN] Angle from center: %.1f°\n", angle_from_center);
-                printf("[LEFT_SCAN] Hypotenuse (measured): %.2f cm\n", edge_distance);
-                printf("[LEFT_SCAN] Adjacent (perpendicular): %.2f cm\n", adjacent);
-                printf("[LEFT_SCAN] LEFT width component: %.2f cm\n", left_width);
-                
+            float avg_distance;
+            if (take_consistent_samples(&avg_distance)) {
+                printf("[LEFT_SCAN] ✓✓ EDGE FOUND at %.1f°! Starting refinement...\n", current_angle);
                 edge_found = true;
+                edge_distance = avg_distance;
                 break;
             } else {
-                if (!consistent) {
-                    printf("[LEFT_SCAN] ✗ Samples inconsistent (variation: %.2f cm > 10cm), continuing scan...\n", variation);
-                } else {
-                    printf("[LEFT_SCAN] ✗ Not enough valid samples, continuing scan...\n");
-                }
+                printf("[LEFT_SCAN] ✗ Inconsistent, continuing...\n");
             }
         } else {
-            printf("[LEFT_SCAN] %.1f° │ No echo (scanning...)\n", current_angle);
+            printf("[LEFT_SCAN] %.1f° │ No echo\n", current_angle);
         }
         
-        current_angle += SERVO_STEP_DEGREE;
+        current_angle += SERVO_SCAN_STEP_DEGREE;
     }
+    
+    if (!edge_found) {
+        printf("[LEFT_SCAN] No edge found!\n");
+        return 0.0f;
+    }
+    
+    // Refinement: Move back and check continuously
+    printf("\n[LEFT_REFINE] Starting edge refinement (moving back toward 35°)...\n");
+    
+    while (current_angle >= SERVO_LEFT_ANGLE) {
+        current_angle -= SERVO_REFINE_STEP_DEGREE;
+        servo_set_angle(current_angle);
+        
+        printf("[LEFT_REFINE] Testing %.1f° (waiting 2s)...\n", current_angle);
+        sleep_ms(REFINEMENT_DELAY_MS);
+        
+        float avg_distance;
+        if (take_consistent_samples(&avg_distance)) {
+            printf("[LEFT_REFINE] ✓ Still edge at %.1f°, avg: %.2f cm\n", current_angle, avg_distance);
+            edge_distance = avg_distance;
+        } else {
+            printf("[LEFT_REFINE] ✗ Edge lost! Final edge at %.1f°\n", current_angle + SERVO_REFINE_STEP_DEGREE);
+            current_angle += SERVO_REFINE_STEP_DEGREE;
+            break;
+        }
+    }
+    
+    // Calculate width
+    left_width = calculate_width_component(adjacent, edge_distance);
+    printf("[LEFT_REFINE] Final edge angle: %.1f°\n", current_angle);
+    printf("[LEFT_REFINE] Final distance: %.2f cm\n", edge_distance);
+    printf("[LEFT_REFINE] LEFT width: %.2f cm\n", left_width);
     
     if (!edge_found) {
         printf("[LEFT_SCAN] WARNING: No edge found, reached 90°\n");
@@ -196,7 +179,7 @@ float scan_left_side(float adjacent) {
 
 /**
  * Scan RIGHT SIDE: Start at 150°, scan toward 90° until echo detected
- * When echo found, move back in 0.5° increments until edge no longer detected
+ * Then refine by moving back and confirming edge
  * 
  * @param adjacent: perpendicular distance (adjacent length)
  * @return: right width component
@@ -213,124 +196,65 @@ float scan_right_side(float adjacent) {
     float current_angle = SERVO_RIGHT_ANGLE;
     float right_width = 0.0f;
     bool edge_found = false;
-    float edge_angle = 0.0f;
     float edge_distance = 0.0f;
     
+    // Fast scan to find edge
     while (current_angle >= SERVO_CENTER_ANGLE && !edge_found) {
         servo_set_angle(current_angle);
         sleep_ms(MEASUREMENT_DELAY_MS);
         
         float distance = ultrasonic_get_distance_cm();
         
-        // Check if echo detected (valid distance reading)
         if (distance > 0 && distance <= MAX_DETECTION_DISTANCE_CM) {
-            // ECHO FOUND - Take multiple readings to confirm
-            printf("[RIGHT_SCAN] %.1f° │ ✓ ECHO FOUND! Taking %d confirmation samples...\n", 
-                   current_angle, EDGE_CONFIRMATION_SAMPLES);
+            printf("[RIGHT_SCAN] %.1f° │ ✓ ECHO! Confirming...\n", current_angle);
             
-            float samples[EDGE_CONFIRMATION_SAMPLES];
-            int valid_samples = 0;
-            
-            for (int i = 0; i < EDGE_CONFIRMATION_SAMPLES; i++) {
-                sleep_ms(100);
-                float sample = ultrasonic_get_distance_cm();
-                
-                if (sample > 0 && sample <= MAX_DETECTION_DISTANCE_CM) {
-                    samples[valid_samples] = sample;
-                    valid_samples++;
-                    printf("[RIGHT_SCAN]   Sample %d: %.2f cm\n", i + 1, sample);
-                } else {
-                    printf("[RIGHT_SCAN]   Sample %d: invalid\n", i + 1);
-                }
-            }
-            
-            // Check consistency: samples shouldn't vary by more than 10cm
-            bool consistent = true;
-            float min_sample = 999.0f;
-            float max_sample = 0.0f;
-            float sum = 0.0f;
-            
-            for (int i = 0; i < valid_samples; i++) {
-                sum += samples[i];
-                if (samples[i] < min_sample) min_sample = samples[i];
-                if (samples[i] > max_sample) max_sample = samples[i];
-            }
-            
-            float variation = max_sample - min_sample;
-            if (variation > 10.0f) {
-                consistent = false;
-            }
-            
-            if (valid_samples >= 3 && consistent) {  // Need at least 3 valid samples AND consistency
-                float avg_distance = sum / valid_samples;
-                printf("[RIGHT_SCAN] ✓✓✓ INITIAL EDGE FOUND! Average: %.2f cm (%d valid samples, variation: %.2f cm)\n", 
-                       avg_distance, valid_samples, variation);
-                
-                edge_angle = current_angle;
-                edge_distance = avg_distance;
-                
-                // Now move back in 0.5° increments to find precise edge
-                printf("\n[RIGHT_SCAN] Moving back in %.1f° increments to refine edge...\n", SERVO_FINE_STEP_DEGREE);
-                
-                while (current_angle <= SERVO_RIGHT_ANGLE) {
-                    current_angle += SERVO_FINE_STEP_DEGREE;
-                    servo_set_angle(current_angle);
-                    
-                    printf("[RIGHT_SCAN] Testing at %.1f°, waiting %d seconds...\n", current_angle, EDGE_CONFIRM_DELAY_MS/1000);
-                    sleep_ms(EDGE_CONFIRM_DELAY_MS);
-                    
-                    // Take samples
-                    float test_sum = 0.0f;
-                    int test_valid = 0;
-                    printf("[RIGHT_SCAN] Taking %d samples...\n", EDGE_CONFIRMATION_SAMPLES);
-                    
-                    for (int i = 0; i < EDGE_CONFIRMATION_SAMPLES; i++) {
-                        sleep_ms(100);
-                        float sample = ultrasonic_get_distance_cm();
-                        if (sample > 0 && sample <= MAX_DETECTION_DISTANCE_CM) {
-                            test_sum += sample;
-                            test_valid++;
-                            printf("[RIGHT_SCAN]   Sample %d: %.2f cm\n", i + 1, sample);
-                        }
-                    }
-                    
-                    if (test_valid >= 3) {
-                        float test_avg = test_sum / test_valid;
-                        printf("[RIGHT_SCAN] Average: %.2f cm - EDGE STILL DETECTED, updating edge position\n", test_avg);
-                        edge_angle = current_angle;
-                        edge_distance = test_avg;
-                    } else {
-                        printf("[RIGHT_SCAN] ✗ EDGE NO LONGER DETECTED at %.1f°\n", current_angle);
-                        printf("[RIGHT_SCAN] Final edge angle: %.1f°\n", edge_angle);
-                        break;
-                    }
-                }
-                
-                float angle_from_center = edge_angle - SERVO_CENTER_ANGLE;
-                right_width = calculate_width_component(adjacent, edge_distance);
-                
-                printf("\n[RIGHT_SCAN] FINAL EDGE RESULTS:\n");
-                printf("[RIGHT_SCAN] Edge angle: %.1f°\n", edge_angle);
-                printf("[RIGHT_SCAN] Angle from center: %.1f°\n", angle_from_center);
-                printf("[RIGHT_SCAN] Hypotenuse (measured): %.2f cm\n", edge_distance);
-                printf("[RIGHT_SCAN] Adjacent (perpendicular): %.2f cm\n", adjacent);
-                printf("[RIGHT_SCAN] RIGHT width component: %.2f cm\n", right_width);
-                
+            float avg_distance;
+            if (take_consistent_samples(&avg_distance)) {
+                printf("[RIGHT_SCAN] ✓✓ EDGE FOUND at %.1f°! Starting refinement...\n", current_angle);
                 edge_found = true;
+                edge_distance = avg_distance;
                 break;
             } else {
-                if (!consistent) {
-                    printf("[RIGHT_SCAN] ✗ Samples inconsistent (variation: %.2f cm > 10cm), continuing scan...\n", variation);
-                } else {
-                    printf("[RIGHT_SCAN] ✗ Not enough valid samples, continuing scan...\n");
-                }
+                printf("[RIGHT_SCAN] ✗ Inconsistent, continuing...\n");
             }
         } else {
-            printf("[RIGHT_SCAN] %.1f° │ No echo (scanning...)\n", current_angle);
+            printf("[RIGHT_SCAN] %.1f° │ No echo\n", current_angle);
         }
         
-        current_angle -= SERVO_STEP_DEGREE;
+        current_angle -= SERVO_SCAN_STEP_DEGREE;
     }
+    
+    if (!edge_found) {
+        printf("[RIGHT_SCAN] No edge found!\n");
+        return 0.0f;
+    }
+    
+    // Refinement: Move back and check continuously
+    printf("\n[RIGHT_REFINE] Starting edge refinement (moving back toward 150°)...\n");
+    
+    while (current_angle <= SERVO_RIGHT_ANGLE) {
+        current_angle += SERVO_REFINE_STEP_DEGREE;
+        servo_set_angle(current_angle);
+        
+        printf("[RIGHT_REFINE] Testing %.1f° (waiting 2s)...\n", current_angle);
+        sleep_ms(REFINEMENT_DELAY_MS);
+        
+        float avg_distance;
+        if (take_consistent_samples(&avg_distance)) {
+            printf("[RIGHT_REFINE] ✓ Still edge at %.1f°, avg: %.2f cm\n", current_angle, avg_distance);
+            edge_distance = avg_distance;
+        } else {
+            printf("[RIGHT_REFINE] ✗ Edge lost! Final edge at %.1f°\n", current_angle - SERVO_REFINE_STEP_DEGREE);
+            current_angle -= SERVO_REFINE_STEP_DEGREE;
+            break;
+        }
+    }
+    
+    // Calculate width
+    right_width = calculate_width_component(adjacent, edge_distance);
+    printf("[RIGHT_REFINE] Final edge angle: %.1f°\n", current_angle);
+    printf("[RIGHT_REFINE] Final distance: %.2f cm\n", edge_distance);
+    printf("[RIGHT_REFINE] RIGHT width: %.2f cm\n", right_width);
     
     if (!edge_found) {
         printf("[RIGHT_SCAN] WARNING: No edge found, reached 90°\n");
@@ -350,12 +274,12 @@ int main(void) {
     printf("║                                                                    ║\n");
     printf("║  Servo Range: 35° (left) to 150° (right), center at 90°          ║\n");
     printf("║  Obstacle Detection Threshold: %.1f cm                             ║\n", OBSTACLE_THRESHOLD_CM);
-    printf("║  Fast Scanning: %.0f° steps, %dms delay                            ║\n", SERVO_STEP_DEGREE, MEASUREMENT_DELAY_MS);
+    printf("║  Scan: %.0f° steps, Refine: %.1f° steps                            ║\n", SERVO_SCAN_STEP_DEGREE, SERVO_REFINE_STEP_DEGREE);
     printf("║                                                                    ║\n");
-    printf("║  Method: PYTHAGOREAN THEOREM                                      ║\n");
-    printf("║  1. Measure perpendicular distance (adjacent) at 90°             ║\n");
-    printf("║  2. Scan LEFT (35°→90°) until ECHO detected (hypotenuse)         ║\n");
-    printf("║  3. Scan RIGHT (150°→90°) until ECHO detected (hypotenuse)       ║\n");
+    printf("║  Method: PYTHAGOREAN THEOREM with Edge Refinement                ║\n");
+    printf("║  1. Fast scan until edge found                                   ║\n");
+    printf("║  2. Move back 0.5° with 2s delay to refine edge                  ║\n");
+    printf("║  3. Continue until edge lost                                     ║\n");
     printf("║  4. Calculate width: √(hypotenuse² - adjacent²)                  ║\n");
     printf("║  5. Total width = left_width + right_width                       ║\n");
     printf("║                                                                    ║\n");
@@ -415,11 +339,13 @@ int main(void) {
             printf("╔════════════════════════════════════════════════════════════════════╗\n");
             printf("║                    OBJECT WIDTH RESULTS                           ║\n");
             printf("╠════════════════════════════════════════════════════════════════════╣\n");
-            printf("║  Adjacent (perpendicular):  %.2f cm                                ║\n", adjacent);
-            printf("║  Left width component:      %.2f cm                                ║\n", left_width);
-            printf("║  Right width component:     %.2f cm                                ║\n", right_width);
+            printf("║  Perpendicular distance:    %.2f cm                                ║\n", adjacent);
+            printf("║  Left edge width:           %.2f cm                                ║\n", left_width);
+            printf("║  Right edge width:          %.2f cm                                ║\n", right_width);
             printf("║  ──────────────────────────────────────────────────────────────   ║\n");
-            printf("║  TOTAL OBJECT WIDTH:        %.2f cm                                ║\n", total_width);
+            printf("║                                                                    ║\n");
+            printf("║  ██████  OBJECT WIDTH: %.2f cm  ██████                            ║\n", total_width);
+            printf("║                                                                    ║\n");
             printf("╚════════════════════════════════════════════════════════════════════╝\n");
             
             // Return servo to center
