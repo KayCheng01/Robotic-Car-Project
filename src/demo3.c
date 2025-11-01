@@ -1,237 +1,362 @@
 #include <stdio.h>
 #include <math.h>
 #include "pico/stdlib.h"
-#include "hardware/pwm.h"
-#include "hardware/gpio.h"
+#include "../ultrasonic/ultrasonic.h"
+#include "../servo/servo.h"
 
-// ============================================================
-//                CONFIGURATION SECTION
-// ============================================================
+// ============== Configuration ==============
+#define OBSTACLE_THRESHOLD_CM           25.0f   // Obstacle detection threshold
+#define SERVO_CENTER_ANGLE              90.0f   // Center/perpendicular angle
+#define SERVO_RIGHT_ANGLE               150.0f  // Max right angle
+#define SERVO_LEFT_ANGLE                35.0f   // Max left angle
+#define SERVO_SCAN_STEP_DEGREE          1.0f    // Fast scanning: 1 degree increments
+#define SERVO_REFINE_STEP_DEGREE        0.5f    // Fine scanning: 0.5 degree increments
+#define MEASUREMENT_DELAY_MS            50      // Fast delay: 50ms between measurements
+#define REFINEMENT_DELAY_MS             2000    // 2 second delay for refinement
+#define MAX_DETECTION_DISTANCE_CM       100.0f  // Maximum valid echo distance
+#define EDGE_CONFIRMATION_SAMPLES       5       // Number of samples to confirm edge detection
+#define CONSISTENCY_THRESHOLD_CM        10.0f   // Maximum variation for consistent samples
 
-// === Servo configuration ===
-#define SERVO_PIN        2       // PWM pin connected to the servo signal wire
-#define SERVO_CENTER_US  1500    // Center pulse width in microseconds (1.5 ms = 0°)
-#define SERVO_SPAN_US     500    // Pulse span: ±500 µs → covers ~±90° movement range
-#define SERVO_SETTLE_MS    70    // Delay (ms) for servo to physically settle after each move
+// ============== Data Structures ==============
+typedef struct {
+    float angle;
+    float distance_cm;
+    bool echo_detected;
+} edge_point_t;
 
-// === Ultrasonic sensor configuration ===
-#define TRIG_PIN         3       // GPIO pin connected to HC-SR04 TRIG (output from Pico)
-#define ECHO_PIN         4       // GPIO pin connected to HC-SR04 ECHO (input to Pico)
-                                 // IMPORTANT: Use a voltage divider on ECHO (5V → 3.3V)
-#define D_MIN_CM          6.0f   // Minimum valid distance reading (cm)
-#define D_MAX_CM         80.0f   // Maximum valid distance reading (cm)
+// ============== Sensor Control Functions ==============
 
-// === Scanning sweep parameters ===
-#define SWEEP_MIN_DEG   -30.0f   // Minimum sweep angle (leftmost)
-#define SWEEP_MAX_DEG    30.0f   // Maximum sweep angle (rightmost)
-#define SWEEP_STEP_DEG    1.0f   // Step size for each servo move during sweep (smaller = smoother)
-#define EDGE_JUMP_CM     15.0f   // Distance difference threshold (cm) to detect object edges
-
-// === Mount and direction tuning ===
-#define YAW_BIAS_DEG      10.0f   // Adjust if "0°" does not face straight ahead (positive = rotate right)
-#define YAW_DIR_SIGN     +1.0f   // Set to -1.0 if servo sweeps reversed (left↔right flipped)
-
-// ============================================================
-
-
-// ============================================================
-//                  SERVO CONTROL FUNCTIONS
-// ============================================================
-
-/*
- * Initializes the servo by configuring the PWM hardware.
- * - Uses 50 Hz frequency (20 ms period)
- * - 1 µs resolution
- * - Starts centered
+/**
+ * Calculate width component using Pythagorean theorem
+ * width = sqrt(hypotenuse² - adjacent²)
+ * 
+ * @param adjacent: perpendicular distance (initial stopping distance at 90°)
+ * @param hypotenuse: measured distance at edge angle
+ * @return: width component in cm
  */
-static void servo_init(void) {
-    gpio_set_function(SERVO_PIN, GPIO_FUNC_PWM);          // Set pin function to PWM
-    uint slice = pwm_gpio_to_slice_num(SERVO_PIN);        // Get PWM slice for this pin
-
-    pwm_config c = pwm_get_default_config();
-    pwm_config_set_clkdiv(&c, 125.0f);                    // 125 MHz / 125 = 1 MHz → 1 µs per tick
-    pwm_config_set_wrap(&c, 20000 - 1);                   // 20,000 ticks = 20 ms period (50 Hz)
-    pwm_init(slice, &c, true);                            // Initialize PWM
-    pwm_set_gpio_level(SERVO_PIN, SERVO_CENTER_US);       // Move servo to center (0°)
-    sleep_ms(300);                                        // Wait for servo to settle
-}
-
-/*
- * Rotates the servo to a given logical angle (in degrees).
- * - logical_deg is the desired angle (e.g., -45 to +45)
- * - The function applies mounting bias and direction sign
- * - Converts degrees to PWM pulse width (µs)
- * - Waits briefly for servo movement to complete
- */
-static void servo_write_deg(float logical_deg) {
-    // Apply bias and direction correction
-    float mech_deg = YAW_BIAS_DEG + (YAW_DIR_SIGN * logical_deg);
-
-    // Clamp mechanical angle to safe range
-    if (mech_deg < -90) mech_deg = -90;
-    if (mech_deg >  90) mech_deg =  90;
-
-    // Convert angle to pulse width (µs)
-    uint16_t pulse = SERVO_CENTER_US + (int16_t)((mech_deg / 90.0f) * SERVO_SPAN_US);
-
-    // Constrain pulse range (most servos accept 500–2500 µs)
-    if (pulse < 500)  pulse = 500;
-    if (pulse > 2500) pulse = 2500;
-
-    // Send PWM pulse and wait for servo to move
-    pwm_set_gpio_level(SERVO_PIN, pulse);
-    sleep_ms(SERVO_SETTLE_MS);
-}
-
-// ============================================================
-//                  ULTRASONIC SENSOR FUNCTIONS
-// ============================================================
-
-/*
- * Initializes the ultrasonic sensor (HC-SR04 type)
- * - TRIG: output (Pico → sensor)
- * - ECHO: input (sensor → Pico)
- */
-static void ultrasonic_init(void) {
-    gpio_init(TRIG_PIN);
-    gpio_set_dir(TRIG_PIN, GPIO_OUT);
-    gpio_put(TRIG_PIN, 0);       // ensure TRIG starts LOW
-
-    gpio_init(ECHO_PIN);
-    gpio_set_dir(ECHO_PIN, GPIO_IN);
-}
-
-/*
- * Sends one trigger pulse and measures the echo pulse width.
- * Converts pulse duration to distance (cm).
- * Returns NaN if no valid echo is received.
- */
-static float ultrasonic_read_cm_once(void) {
-    // Send 10 µs trigger pulse
-    gpio_put(TRIG_PIN, 1);
-    sleep_us(10);
-    gpio_put(TRIG_PIN, 0);
-
-    // Wait for echo HIGH (start)
-    absolute_time_t t_to = make_timeout_time_us(30000); // 30 ms timeout
-    while (!gpio_get(ECHO_PIN))
-        if (absolute_time_diff_us(get_absolute_time(), t_to) > 0) return NAN;
-    absolute_time_t t1 = get_absolute_time();
-
-    // Wait for echo LOW (end)
-    while (gpio_get(ECHO_PIN))
-        if (absolute_time_diff_us(get_absolute_time(), t1) > 30000) return NAN;
-    absolute_time_t t2 = get_absolute_time();
-
-    // Calculate duration (µs) and convert to distance (cm)
-    float us = (float)absolute_time_diff_us(t1, t2);
-    float cm = us / 58.0f;  // ~58 µs per cm at 20–25°C
-    if (cm < D_MIN_CM || cm > D_MAX_CM) return NAN; // filter out invalid
-    return cm;
-}
-
-/*
- * Utility: returns the median of three values.
- * Used to smooth out noisy ultrasonic readings.
- */
-static inline float median3(float a, float b, float c) {
-    if (a > b){ float t=a;a=b;b=t; }
-    if (b > c){ float t=b;b=c;c=t; }
-    if (a > b){ float t=a;a=b;b=t; }
-    return b;
-}
-
-/*
- * Takes three ultrasonic readings and returns their median.
- * This improves reliability by removing outliers.
- */
-static float ultrasonic_read_cm(void) {
-    float a = ultrasonic_read_cm_once(); sleep_ms(5);
-    float b = ultrasonic_read_cm_once(); sleep_ms(5);
-    float c = ultrasonic_read_cm_once();
-
-    // Handle all-invalid case
-    if (isnan(a) && isnan(b) && isnan(c)) return NAN;
-
-    // Substitute missing values if only 1–2 failed
-    if (isnan(a)) a = (!isnan(b)) ? b : c;
-    if (isnan(b)) b = (!isnan(c)) ? c : a;
-    if (isnan(c)) c = (!isnan(a)) ? a : b;
-
-    return median3(a,b,c);
-}
-
-// ============================================================
-//                OBSTACLE WIDTH SCANNING LOGIC
-// ============================================================
-
-/*
- * Main loop:
- * 1. Sweep servo from left (-45°) to right (+45°)
- * 2. Measure distance at each angle
- * 3. Detect left and right edges (where distance changes sharply)
- * 4. Compute obstacle width using simple trigonometry
- */
-int main() {
-    stdio_init_all();
-    sleep_ms(300);
-
-    // Initialize hardware
-    servo_init();
-    ultrasonic_init();
-
-    while (true) {
-        float d_prev = NAN;                // stores previous distance
-        float left_angle = 0, right_angle = 0;
-        float left_dist = 0, right_dist = 0;
-        bool found_left = false, found_right = false;
-
-        printf("\n=== Scanning... ===\n");
-
-        // Sweep from left to right
-        for (float deg = SWEEP_MIN_DEG; deg <= SWEEP_MAX_DEG; deg += SWEEP_STEP_DEG) {
-            servo_write_deg(deg);              // move servo
-            float d = ultrasonic_read_cm();    // measure distance
-            printf("Angle %.1f°, Distance %.1f cm\n", deg, d);
-
-            // Detect large change (jump) → possible edge
-            if (!isnan(d_prev) && !isnan(d)) {
-                float jump = d_prev - d; // negative jump = object closer
-
-                // Detect entering edge (free → object)
-                if (!found_left && jump > EDGE_JUMP_CM) {
-                    left_angle = deg;
-                    left_dist = d;
-                    found_left = true;
-                }
-
-                // Detect exiting edge (object → free)
-                if (found_left && !found_right && -jump > EDGE_JUMP_CM) {
-                    right_angle = deg;
-                    right_dist = d;
-                    found_right = true;
-                }
-            }
-            d_prev = d;
-        }
-
-        // If both edges detected, compute width
-        if (found_left && found_right) {
-            // Convert polar (θ, d) to Cartesian (x, y)
-            float thL = left_angle  * (M_PI / 180.0f);
-            float thR = right_angle * (M_PI / 180.0f);
-            float xL = left_dist * cosf(thL);
-            float yL = left_dist * sinf(thL);
-            float xR = right_dist * cosf(thR);
-            float yR = right_dist * sinf(thR);
-
-            // Distance between edges = width
-            float width = sqrtf((xR - xL)*(xR - xL) + (yR - yL)*(yR - yL));
-            printf("\nEstimated obstacle width: %.1f cm\n", width);
-        } else {
-            printf("\nNo clear edges detected.\n");
-        }
-
-        sleep_ms(1500); // wait before next full scan
+float calculate_width_component(float adjacent, float hypotenuse) {
+    // Pythagorean theorem: width = sqrt(hypotenuse² - adjacent²)
+    float h_squared = hypotenuse * hypotenuse;
+    float a_squared = adjacent * adjacent;
+    
+    if (h_squared <= a_squared) {
+        printf("    [WARNING] Hypotenuse (%.2f) <= adjacent (%.2f), returning 0\n", 
+               hypotenuse, adjacent);
+        return 0.0f;
     }
+    
+    float width = sqrtf(h_squared - a_squared);
+    
+    return width;
+}
+
+/**
+ * Take samples and check consistency
+ */
+bool take_consistent_samples(float *avg_distance_out) {
+    float samples[EDGE_CONFIRMATION_SAMPLES];
+    int valid_samples = 0;
+    
+    for (int i = 0; i < EDGE_CONFIRMATION_SAMPLES; i++) {
+        sleep_ms(100);
+        float sample = ultrasonic_get_distance_cm();
+        
+        if (sample > 0 && sample <= MAX_DETECTION_DISTANCE_CM) {
+            samples[valid_samples] = sample;
+            valid_samples++;
+            printf("      Sample %d: %.2f cm\n", i + 1, sample);
+        } else {
+            printf("      Sample %d: invalid\n", i + 1);
+        }
+    }
+    
+    if (valid_samples < 3) {
+        return false;
+    }
+    
+    // Check consistency
+    float min_sample = 999.0f;
+    float max_sample = 0.0f;
+    float sum = 0.0f;
+    
+    for (int i = 0; i < valid_samples; i++) {
+        sum += samples[i];
+        if (samples[i] < min_sample) min_sample = samples[i];
+        if (samples[i] > max_sample) max_sample = samples[i];
+    }
+    
+    float variation = max_sample - min_sample;
+    *avg_distance_out = sum / valid_samples;
+    
+    return (variation <= CONSISTENCY_THRESHOLD_CM);
+}
+
+/**
+ * Scan LEFT SIDE: Start at 35°, scan toward 90° until echo detected
+ * Then refine by moving back and confirming edge
+ * 
+ * @param adjacent: perpendicular distance (adjacent length)
+ * @return: left width component
+ */
+float scan_left_side(float adjacent) {
+    printf("\n[LEFT_SCAN] Waiting 2 seconds before scanning...\n");
+    sleep_ms(2000);
+    
+    printf("[LEFT_SCAN] Starting from 35° scanning toward 90°...\n");
+    printf("[LEFT_SCAN] Looking for ECHO (edge detection)...\n");
+    printf("[LEFT_SCAN] Angle │ Status\n");
+    printf("[LEFT_SCAN] ──────┼────────────────\n");
+    
+    float current_angle = SERVO_LEFT_ANGLE;
+    float left_width = 0.0f;
+    bool edge_found = false;
+    float edge_distance = 0.0f;
+    
+    // Fast scan to find edge
+    while (current_angle <= SERVO_CENTER_ANGLE && !edge_found) {
+        servo_set_angle(current_angle);
+        sleep_ms(MEASUREMENT_DELAY_MS);
+        
+        float distance = ultrasonic_get_distance_cm();
+        
+        if (distance > 0 && distance <= MAX_DETECTION_DISTANCE_CM) {
+            printf("[LEFT_SCAN] %.1f° │ ✓ ECHO! Confirming...\n", current_angle);
+            
+            float avg_distance;
+            if (take_consistent_samples(&avg_distance)) {
+                printf("[LEFT_SCAN] ✓✓ EDGE FOUND at %.1f°! Starting refinement...\n", current_angle);
+                edge_found = true;
+                edge_distance = avg_distance;
+                break;
+            } else {
+                printf("[LEFT_SCAN] ✗ Inconsistent, continuing...\n");
+            }
+        } else {
+            printf("[LEFT_SCAN] %.1f° │ No echo\n", current_angle);
+        }
+        
+        current_angle += SERVO_SCAN_STEP_DEGREE;
+    }
+    
+    if (!edge_found) {
+        printf("[LEFT_SCAN] No edge found!\n");
+        return 0.0f;
+    }
+    
+    // Refinement: Move back and check continuously
+    printf("\n[LEFT_REFINE] Starting edge refinement (moving back toward 35°)...\n");
+    
+    while (current_angle >= SERVO_LEFT_ANGLE) {
+        current_angle -= SERVO_REFINE_STEP_DEGREE;
+        servo_set_angle(current_angle);
+        
+        printf("[LEFT_REFINE] Testing %.1f° (waiting 2s)...\n", current_angle);
+        sleep_ms(REFINEMENT_DELAY_MS);
+        
+        float avg_distance;
+        if (take_consistent_samples(&avg_distance)) {
+            printf("[LEFT_REFINE] ✓ Still edge at %.1f°, avg: %.2f cm\n", current_angle, avg_distance);
+            edge_distance = avg_distance;
+        } else {
+            printf("[LEFT_REFINE] ✗ Edge lost! Final edge at %.1f°\n", current_angle + SERVO_REFINE_STEP_DEGREE);
+            current_angle += SERVO_REFINE_STEP_DEGREE;
+            break;
+        }
+    }
+    
+    // Calculate width
+    left_width = calculate_width_component(adjacent, edge_distance);
+    printf("[LEFT_REFINE] Final edge angle: %.1f°\n", current_angle);
+    printf("[LEFT_REFINE] Final distance: %.2f cm\n", edge_distance);
+    printf("[LEFT_REFINE] LEFT width: %.2f cm\n", left_width);
+    
+    if (!edge_found) {
+        printf("[LEFT_SCAN] WARNING: No edge found, reached 90°\n");
+    }
+    
+    return left_width;
+}
+
+/**
+ * Scan RIGHT SIDE: Start at 150°, scan toward 90° until echo detected
+ * Then refine by moving back and confirming edge
+ * 
+ * @param adjacent: perpendicular distance (adjacent length)
+ * @return: right width component
+ */
+float scan_right_side(float adjacent) {
+    printf("\n[RIGHT_SCAN] Waiting 2 seconds before scanning...\n");
+    sleep_ms(2000);
+    
+    printf("[RIGHT_SCAN] Starting from 150° scanning toward 90°...\n");
+    printf("[RIGHT_SCAN] Looking for ECHO (edge detection)...\n");
+    printf("[RIGHT_SCAN] Angle │ Status\n");
+    printf("[RIGHT_SCAN] ──────┼────────────────\n");
+    
+    float current_angle = SERVO_RIGHT_ANGLE;
+    float right_width = 0.0f;
+    bool edge_found = false;
+    float edge_distance = 0.0f;
+    
+    // Fast scan to find edge
+    while (current_angle >= SERVO_CENTER_ANGLE && !edge_found) {
+        servo_set_angle(current_angle);
+        sleep_ms(MEASUREMENT_DELAY_MS);
+        
+        float distance = ultrasonic_get_distance_cm();
+        
+        if (distance > 0 && distance <= MAX_DETECTION_DISTANCE_CM) {
+            printf("[RIGHT_SCAN] %.1f° │ ✓ ECHO! Confirming...\n", current_angle);
+            
+            float avg_distance;
+            if (take_consistent_samples(&avg_distance)) {
+                printf("[RIGHT_SCAN] ✓✓ EDGE FOUND at %.1f°! Starting refinement...\n", current_angle);
+                edge_found = true;
+                edge_distance = avg_distance;
+                break;
+            } else {
+                printf("[RIGHT_SCAN] ✗ Inconsistent, continuing...\n");
+            }
+        } else {
+            printf("[RIGHT_SCAN] %.1f° │ No echo\n", current_angle);
+        }
+        
+        current_angle -= SERVO_SCAN_STEP_DEGREE;
+    }
+    
+    if (!edge_found) {
+        printf("[RIGHT_SCAN] No edge found!\n");
+        return 0.0f;
+    }
+    
+    // Refinement: Move back and check continuously
+    printf("\n[RIGHT_REFINE] Starting edge refinement (moving back toward 150°)...\n");
+    
+    while (current_angle <= SERVO_RIGHT_ANGLE) {
+        current_angle += SERVO_REFINE_STEP_DEGREE;
+        servo_set_angle(current_angle);
+        
+        printf("[RIGHT_REFINE] Testing %.1f° (waiting 2s)...\n", current_angle);
+        sleep_ms(REFINEMENT_DELAY_MS);
+        
+        float avg_distance;
+        if (take_consistent_samples(&avg_distance)) {
+            printf("[RIGHT_REFINE] ✓ Still edge at %.1f°, avg: %.2f cm\n", current_angle, avg_distance);
+            edge_distance = avg_distance;
+        } else {
+            printf("[RIGHT_REFINE] ✗ Edge lost! Final edge at %.1f°\n", current_angle - SERVO_REFINE_STEP_DEGREE);
+            current_angle -= SERVO_REFINE_STEP_DEGREE;
+            break;
+        }
+    }
+    
+    // Calculate width
+    right_width = calculate_width_component(adjacent, edge_distance);
+    printf("[RIGHT_REFINE] Final edge angle: %.1f°\n", current_angle);
+    printf("[RIGHT_REFINE] Final distance: %.2f cm\n", edge_distance);
+    printf("[RIGHT_REFINE] RIGHT width: %.2f cm\n", right_width);
+    
+    if (!edge_found) {
+        printf("[RIGHT_SCAN] WARNING: No edge found, reached 90°\n");
+    }
+    
+    return right_width;
+}
+
+// ============== Main Program ==============
+int main(void) {
+    stdio_init_all();
+    sleep_ms(3000);
+    
+    printf("\n\n");
+    printf("╔════════════════════════════════════════════════════════════════════╗\n");
+    printf("║      OBJECT WIDTH DETECTION WITH ECHO-BASED EDGE SCANNING        ║\n");
+    printf("║                                                                    ║\n");
+    printf("║  Servo Range: 35° (left) to 150° (right), center at 90°          ║\n");
+    printf("║  Obstacle Detection Threshold: %.1f cm                             ║\n", OBSTACLE_THRESHOLD_CM);
+    printf("║  Scan: %.0f° steps, Refine: %.1f° steps                            ║\n", SERVO_SCAN_STEP_DEGREE, SERVO_REFINE_STEP_DEGREE);
+    printf("║                                                                    ║\n");
+    printf("║  Method: PYTHAGOREAN THEOREM with Edge Refinement                ║\n");
+    printf("║  1. Fast scan until edge found                                   ║\n");
+    printf("║  2. Move back 0.5° with 2s delay to refine edge                  ║\n");
+    printf("║  3. Continue until edge lost                                     ║\n");
+    printf("║  4. Calculate width: √(hypotenuse² - adjacent²)                  ║\n");
+    printf("║  5. Total width = left_width + right_width                       ║\n");
+    printf("║                                                                    ║\n");
+    printf("╚════════════════════════════════════════════════════════════════════╝\n\n");
+    
+    // Initialize servo
+    servo_init();
+    sleep_ms(500);
+    
+    // Initialize ultrasonic
+    ultrasonic_init();
+    sleep_ms(500);
+    
+    printf("[INIT] System initialized. Moving servo to center (90°)...\n\n");
+    servo_set_angle(SERVO_CENTER_ANGLE);
+    sleep_ms(500);
+    
+    while (1) {
+        // Monitor distance at center
+        float distance_cm = ultrasonic_get_distance_cm();
+        
+        printf("[MONITOR] Center (90°): ");
+        if (distance_cm < 0.0f) {
+            printf("timeout/out of range");
+        } else {
+            printf("%.2f cm", distance_cm);
+        }
+        printf("\n");
+        fflush(stdout);
+        sleep_ms(500);
+        
+        // Check if obstacle detected
+        if (distance_cm <= OBSTACLE_THRESHOLD_CM && distance_cm > 0.0f) {
+            printf("\n");
+            printf("╔════════════════════════════════════════════════════════════════════╗\n");
+            printf("║                 *** OBSTACLE DETECTED ***                          ║\n");
+            printf("║           Perpendicular Distance: %.2f cm (adjacent)               ║\n", 
+                   distance_cm);
+            printf("╚════════════════════════════════════════════════════════════════════╝\n");
+            
+            // Step 1: Use current distance as adjacent (perpendicular distance)
+            float adjacent = distance_cm;
+            printf("\n[ADJACENT] Using perpendicular distance: %.2f cm\n", adjacent);
+            
+            // Step 2: Scan LEFT side (35° → 90°) - find first echo
+            float left_width = scan_left_side(adjacent);
+            
+            sleep_ms(500);
+            
+            // Step 3: Scan RIGHT side (150° → 90°) - find first echo
+            float right_width = scan_right_side(adjacent);
+            
+            // Step 4: Calculate total object width
+            float total_width = left_width + right_width;
+            
+            printf("\n");
+            printf("╔════════════════════════════════════════════════════════════════════╗\n");
+            printf("║                    OBJECT WIDTH RESULTS                           ║\n");
+            printf("╠════════════════════════════════════════════════════════════════════╣\n");
+            printf("║  Perpendicular distance:    %.2f cm                                ║\n", adjacent);
+            printf("║  Left edge width:           %.2f cm                                ║\n", left_width);
+            printf("║  Right edge width:          %.2f cm                                ║\n", right_width);
+            printf("║  ──────────────────────────────────────────────────────────────   ║\n");
+            printf("║                                                                    ║\n");
+            printf("║  ██████  OBJECT WIDTH: %.2f cm  ██████                            ║\n", total_width);
+            printf("║                                                                    ║\n");
+            printf("╚════════════════════════════════════════════════════════════════════╝\n");
+            
+            // Return servo to center
+            printf("\n[RETURN] Moving servo back to center (90°)...\n");
+            servo_set_angle(SERVO_CENTER_ANGLE);
+            sleep_ms(500);
+            
+            printf("\n[READY] Ready for next obstacle detection. Waiting 2 seconds...\n\n");
+            sleep_ms(2000);
+        }
+    }
+    
+    return 0;
 }

@@ -49,6 +49,8 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ir/cmake_install.cmake")
   include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/cmake_install.cmake")
   include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/barcode/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ultrasonic/cmake_install.cmake")
+  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/servo/cmake_install.cmake")
 
 endif()
 
