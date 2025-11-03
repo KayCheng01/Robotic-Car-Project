@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project
+# Install script for directory: C:/Users/caiwe/Robotic-Car-Project
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -39,18 +39,18 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/FREERTOS_KERNEL/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/encoder/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/motor/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/src/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/wifi/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ir/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/imu/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/barcode/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/ultrasonic/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/servo/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/pico_extras/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/FREERTOS_KERNEL/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/pico-sdk/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/encoder/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/motor/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/src/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/wifi/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/ir/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/imu/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/barcode/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/ultrasonic/cmake_install.cmake")
+  include("C:/Users/caiwe/Robotic-Car-Project/build/servo/cmake_install.cmake")
 
 endif()
 
@@ -62,5 +62,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "C:/Users/caiwe/Robotic-Car-Project/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

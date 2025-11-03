@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/NgKay/Documents/Pico-v1.5.1/pico-extras/src/common/platypus
+# Install script for directory: C:/Users/caiwe/Documents/Pico-v1.5.1/pico-extras/src/common/platypus
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
