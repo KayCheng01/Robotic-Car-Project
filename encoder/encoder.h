@@ -49,5 +49,9 @@ float get_average_speed(void);
 void  reset_left_encoder(void);
 void  reset_right_encoder(void);
 void  reset_encoders(void);
+uint32_t get_left_encoder_count(void);
+uint32_t get_right_encoder_count(void);
+void     reset_encoder_counts(void); 
+
 
 #endif

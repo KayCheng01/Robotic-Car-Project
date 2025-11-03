@@ -1,7 +1,6 @@
 add_executable(main
     #main.c
     #main_constant_speed.c
-    tcp.c
     #demo1.c
     #demo2.c
     #demo3.c
@@ -9,6 +8,11 @@ add_executable(main
     #demo2v3.c
     #testDemo1.c
     #testdemo2.c
+    #testdemo2v2.c
+    #b.c
+    #Step1_read_adc.c
+    #testDemo3.c
+    test_obstacle_width_cosine.c
 )
 
 add_compile_definitions(LWIP_MQTT=1)
