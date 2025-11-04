@@ -13,7 +13,9 @@ add_executable(main
     #Step1_read_adc.c
     #testDemo3.c
     #test_obstacle_width_cosine.c
-    testing_clearpath.c
+    #testing_clearpath.c
+    #barcodedemo2.c
+    barcode_scanner.c
 )
 
 add_compile_definitions(LWIP_MQTT=1)

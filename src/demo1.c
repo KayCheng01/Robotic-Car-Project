@@ -1,4 +1,4 @@
-#include <stdio.h>
+s#include <stdio.h>
 #include <math.h>
 #include "pico/stdlib.h"
 #include "FreeRTOS.h"
