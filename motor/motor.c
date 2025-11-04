@@ -131,7 +131,7 @@ void pid_task(void *params){
 
             jumpstarted = false;
         }
-        pwmL -= 2;
+        pwmL -= 3;
 
         switch (pid_state){
             case PID_FWD:     forward_motor(pwmL,pwmR); break;
