@@ -33,7 +33,10 @@
 
 #define TOTAL_CHAR 44
 #define BARCODE_ELEMENTS 9
+#define BARCODE_BUFFER_SIZE 100
+#define END_OF_BARCODE_TIMEOUT_MS 3000 // 3 seconds of white space indicates end of barcode
 
+// Hardcoded Code 39 character set
 char char_array[TOTAL_CHAR] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
@@ -168,89 +171,100 @@ char decode_barcode(const char *binary_code) {
 }
 
 /**
- * @brief Scans and decodes a single Code 39 character.
+ * @brief Scans and decodes a full multi-character Code 39 barcode.
  *
- * This function waits for the start of a barcode, measures the width of the 9
- * elements, classifies them as narrow or wide, and returns the decoded character.
- *
- * @return The decoded character, or '?' on failure.
+ * This function orchestrates the scanning process. It waits for the start of a
+ * barcode, then repeatedly scans each character until a timeout on a white
+ * space indicates the end of the full barcode. The final decoded string is
+ * then printed.
  */
-char scan_barcode_char() {
-    uint32_t durations[BARCODE_ELEMENTS];
-    char binary_code[BARCODE_ELEMENTS + 1];
-    uint32_t min_duration = 0xFFFFFFFF, max_duration = 0;
+void scan_and_print_full_barcode() {
+    char decoded_string[BARCODE_BUFFER_SIZE];
+    int char_count = 0;
 
-    printf("Waiting for pre-element (white bar)...\n");
-    // Wait until the sensor sees white (low ADC reading)
+    printf("Waiting for barcode start (black bar after white pre-element)...\n");
+
+    // Wait for the initial white pre-element to pass
     while (read_ir_adc() > ADC_THRESHOLD) {
         tight_loop_contents();
     }
 
-    printf("Waiting for barcode start (black bar)...\n");
-    // Wait until the sensor sees the first black bar
+    // Now, wait for the first black bar of the first character
     while (read_ir_adc() < ADC_THRESHOLD) {
         tight_loop_contents();
     }
 
-    printf("--- Starting Barcode Scan ---\n");
+    // Loop to scan multiple characters - continues until end of barcode is detected
+    while (char_count < BARCODE_BUFFER_SIZE - 1) {
+        uint32_t durations[BARCODE_ELEMENTS];
+        char binary_code[BARCODE_ELEMENTS + 1];
+        uint32_t min_duration = 0xFFFFFFFF, max_duration = 0;
 
-    // Scan the 9 elements of the barcode
-    for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
-        uint16_t current_adc = read_ir_adc();
-        bool is_black = current_adc > ADC_THRESHOLD;
-        const char* color_str = is_black ? "Black" : "White";
+        printf("\n--- Scanning Character %d ---\n", char_count + 1);
+
+        // The first bar is black, which we already detected.
+        // Scan the 9 elements of the current character.
+        for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
+            uint16_t current_adc = read_ir_adc();
+            bool is_black = current_adc > ADC_THRESHOLD;
+            const char* color_str = is_black ? "Black" : "White";
+            
+            uint32_t start_time = time_us_32();
+            
+            // Wait for the color to change
+            while ((read_ir_adc() > ADC_THRESHOLD) == is_black) {
+                tight_loop_contents();
+            }
+            
+            uint32_t end_time = time_us_32();
+            durations[i] = end_time - start_time;
+
+            if (durations[i] < min_duration) min_duration = durations[i];
+            if (durations[i] > max_duration) max_duration = durations[i];
+
+            printf("Element %d: Duration=%-5lu us, Color=%s\n", i, durations[i], color_str);
+        }
+
+        // --- Decode the scanned character ---
+        uint32_t width_threshold = min_duration + (max_duration - min_duration) / 2;
+        for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
+            binary_code[i] = (durations[i] > width_threshold) ? '1' : '0';
+        }
+        binary_code[BARCODE_ELEMENTS] = '\0';
+
+        char decoded_char = decode_barcode(binary_code);
+        printf("Binary: %s -> Decoded: %c\n", binary_code, decoded_char);
+
+        if (decoded_char != '?') {
+            decoded_string[char_count++] = decoded_char;
+        }
+
+        // --- Check for end of barcode or next character ---
+        // After a character, there's a mandatory white inter-character gap.
+        printf("Waiting for inter-character white space or end of barcode...\n");
         
-        uint32_t start_time = time_us_32();
-        
-        // Wait for the color to change
-        while ((read_ir_adc() > ADC_THRESHOLD) == is_black) {
+        uint32_t white_start_time = time_us_32();
+        // Wait until we see black again (next char) or timeout (end of barcode)
+        while (read_ir_adc() < ADC_THRESHOLD) {
+            if (time_us_32() - white_start_time > END_OF_BARCODE_TIMEOUT_MS * 1000) {
+                printf("End of barcode detected (timeout on white space).\n");
+                goto end_of_scan; // End of barcode detected
+            }
             tight_loop_contents();
         }
-        
-        uint32_t end_time = time_us_32();
-        durations[i] = end_time - start_time;
-
-        // Update min and max durations for later classification
-        if (durations[i] < min_duration) min_duration = durations[i];
-        if (durations[i] > max_duration) max_duration = durations[i];
-
-        // The 'speed' would be inversely proportional to duration, but we don't need to calculate it
-        // as the ratio-based decoding handles speed variations.
-        printf("Element %d: Duration=%lu us, Color=%s, ADC=%u\n", i, durations[i], color_str, current_adc);
+        printf("Next character detected.\n");
     }
 
-    // Dynamically determine the threshold between narrow and wide bars
-    uint32_t width_threshold = min_duration + (max_duration - min_duration) / 2;
-    printf("\n--- Analysis ---\n");
-    printf("Min Duration: %lu us, Max Duration: %lu us\n", min_duration, max_duration);
-    printf("Width Threshold: %lu us\n", width_threshold);
+end_of_scan:
+    decoded_string[char_count] = '\0'; // Null-terminate the final string
 
-    // Classify elements and build the binary string
-    for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
-        if (durations[i] > width_threshold) {
-            binary_code[i] = '1'; // Wide
-            printf("Element %d is WIDE\n", i);
-        } else {
-            binary_code[i] = '0'; // Narrow
-            printf("Element %d is NARROW\n", i);
-        }
-    }
-    binary_code[BARCODE_ELEMENTS] = '\0'; // Null-terminate the string
-
-    printf("\nBinary Code: %s\n", binary_code);
-
-    // Decode the binary string
-    char decoded_char = decode_barcode(binary_code);
-    
-    printf("--- Result ---\n");
-    if (decoded_char != '?') {
-        printf("Decoded Character: %c\n", decoded_char);
+    printf("\n==================================\n");
+    if (char_count > 0) {
+        printf("Final Decoded String: %s\n", decoded_string);
     } else {
-        printf("Decoding failed. No match found.\n");
+        printf("No barcode was successfully decoded.\n");
     }
-    printf("----------------\n\n");
-
-    return decoded_char;
+    printf("==================================\n\n");
 }
 
 // Main function to set up and run the scanner
@@ -264,11 +278,9 @@ int main() {
     adc_select_input(IR_SENSOR_ADC_INPUT);
 
     while (1) {
-        printf("Press a key to start scanning...\n");
+        printf("Press a key to start scanning a full barcode...\n");
         getchar(); // Wait for user input to start a scan
-        scan_barcode_char();
-        // The main application logic would use the decoded character here.
-        // For this demo, we just loop and wait for the next scan.
+        scan_and_print_full_barcode();
     }
 
     return 0;
