@@ -3,11 +3,11 @@
 160	291	7838890241880351	pico-sdk/src/rp2_common/boot_stage2/CMakeFiles/bs2_default.dir/compile_time_choice.S.obj	86cc2b483a6df7fa
 4480	4809	7838890286640387	motor/CMakeFiles/motor_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_mem_ops/mem_ops_aeabi.S.obj	d7e2d7b4fd261ebd
 112	423	7838885080616467	pico-sdk/src/rp2_common/pico_cyw43_driver/cyw43_bus_pio_spi.pio.h	4ebadc734ecd9396
-192	1308	7838893762116080	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/core/dns.c.obj	c857da5506884892
 112	423	7838885080616467	C:/Users/caiwe/Robotic-Car-Project/build/pico-sdk/src/rp2_common/pico_cyw43_driver/cyw43_bus_pio_spi.pio.h	4ebadc734ecd9396
+192	1308	7838893762116080	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/lwip/src/core/dns.c.obj	c857da5506884892
 1080	1751	7838893556528685	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/lib/tinyusb/src/tusb.c.obj	9677366dda9b3be8
-7182	8122	7838893830425256	src/CMakeFiles/main.dir/__/FreeRTOS-Kernel-main/stream_buffer.c.obj	327d0d1eab035577
 2282	2810	7838890266717589	encoder/CMakeFiles/encoder_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_stdio_uart/stdio_uart.c.obj	2c1f63e5619b619d
+7182	8122	7838893830425256	src/CMakeFiles/main.dir/__/FreeRTOS-Kernel-main/stream_buffer.c.obj	327d0d1eab035577
 9522	10125	7838893850719029	wifi/CMakeFiles/wifi_lib.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_standard_link/new_delete.cpp.obj	956970eb4f469f63
 217	1186	7838890434361523	src/CMakeFiles/main.dir/C_/Program_Files/Raspberry_Pi/Pico_SDK_v1.5.1/pico-sdk/src/rp2_common/pico_runtime/runtime.c.obj	fa33a373c0f25b9e
 646	817	7838890247072691	C:/Users/caiwe/Robotic-Car-Project/build/pico-sdk/src/rp2_common/boot_stage2/bs2_default_padded_checksummed.S	3e78423bda54ec3a
@@ -748,3 +748,7 @@
 25639	25802	7838894007796380	servo/libservo_lib.a	3c2b68cefb6eb4fd
 384	943	7839283804232483	src/main.elf	5e206575d8a09d8a
 89	384	7839283800383641	src/CMakeFiles/main.dir/barcode_scanner.c.obj	5695259d7441a54
+124	364	7839295979003397	src/CMakeFiles/main.dir/barcode_scanner.c.obj	5695259d7441a54
+364	1008	7839295982756114	src/main.elf	5e206575d8a09d8a
+117	389	7839296277320612	src/CMakeFiles/main.dir/barcode_scanner.c.obj	5695259d7441a54
+390	1015	7839296281658151	src/main.elf	5e206575d8a09d8a
