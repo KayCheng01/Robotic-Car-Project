@@ -1,198 +1,359 @@
-// main.c — Crawl straight + decode Code39 while moving (slow & steady)
+// =============================================
+// testdemo2_merged.c
+// - Keeps your existing Demo2v4 line-follow from testdemo2.c (GP28 DO)
+// - Adds EXACT Code-39 scanner logic from barcode_scanner.c on GP27/ADC1
+// =============================================
+
 #include <stdio.h>
-#include <math.h>
+#include <string.h>
+#include <stdbool.h>
+
 #include "pico/stdlib.h"
+#include "hardware/gpio.h"
+#include "hardware/adc.h"
+#include "hardware/timer.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
 #include "motor.h"
 #include "encoder.h"
-#include "imu.h"
-#include "config.h"
-#include "barcode.h"   // IR_SENSOR_PIN + barcode APIs
 
-// ====== SLOW PROFILE KNOBS (tune here) =========================
-#define CRAWL_V_CMPS            6.0f   // steady forward speed (cm/s) — try 4–10
-#define ACCEL_LIMIT_CMPS2       20.0f  // acceleration cap (cm/s^2) — 10–40 keeps it gentle
-#define V_LPF_ALPHA             0.12f  // low-pass on v_cmd (0..1), higher = more responsive
+// ===============================
+// LINE-FOLLOW (from your testdemo2.c)
+// (unchanged logic; using DO on GP28)
+// ===============================
+#define LINE_SENSOR_DO_PIN     28  // If you were using DO; keep as in your testdemo2.c
+#ifndef DO_ACTIVE_ON_BLACK
+#define DO_ACTIVE_ON_BLACK     0   // 1 if DO=LOW on black; 0 if DO=HIGH on black
+#endif
 
-// Extra safety clamps on top of config.h PWM limits
-#define LOCAL_PWM_MAX_LEFT      360    // lower these if still too punchy
-#define LOCAL_PWM_MAX_RIGHT     360
-#define LOCAL_PWM_MIN_LEFT      280    // keep above deadzone; raise until wheels just start moving
-#define LOCAL_PWM_MIN_RIGHT     280
+#ifndef SLOW_SPEED_CMPS
+#define SLOW_SPEED_CMPS        2.0f
+#endif
+#ifndef SEARCH_PWM
+#define SEARCH_PWM             50
+#endif
+#ifndef STEER_DURATION
+#define STEER_DURATION         70
+#endif
+#ifndef DEBOUNCE_DELAY_MS
+#define DEBOUNCE_DELAY_MS      120
+#endif
+#ifndef REVERSE_MS
+#define REVERSE_MS             90
+#endif
+#ifndef REACQUIRE_GOOD_SAMPLES
+#define REACQUIRE_GOOD_SAMPLES 3
+#endif
 
-// Make slew smaller than before for smoothness
-#define LOCAL_MAX_PWM_STEP      6      // max change per loop in PWM counts
+static inline void init_line_digital(void) {
+    gpio_init(LINE_SENSOR_DO_PIN);
+    gpio_set_dir(LINE_SENSOR_DO_PIN, GPIO_IN);
+}
 
-// Barcode-aware throttling
-#define SCAN_THROTTLE_CMPS      3.5f   // when scanning/just-decoded, drop towards this speed
-#define POST_DECODE_BRAKE_MS    250    // brief slow-down after a char completes
-// ===============================================================
+static inline bool do_on_track_raw(void) {
+    bool level = gpio_get(LINE_SENSOR_DO_PIN);
+    return DO_ACTIVE_ON_BLACK ? (level == 0) : (level == 1);
+}
 
-// ===== Barcode event bridge (from your barcode.c) =====
-extern char decoded_barcode_char;         // set when *X* completes
-extern volatile bool is_scanning_allowed; // scan gate
-
-static volatile uint32_t g_last_decode_ms = 0;
-
-// Mirror a clean line when a char is decoded (optional hook for actions)
-static void vBarcodeEventTask(void *pv) {
-    char last = 0;
-    for (;;) {
-        if (decoded_barcode_char != 0 && decoded_barcode_char != last) {
-            last = decoded_barcode_char;
-            printf("[BARCODE] Decoded: %c\n", last);
-            g_last_decode_ms = to_ms_since_boot(get_absolute_time());
-            // Optional: actions based on symbol, e.g. if(last=='S'){...}
+static bool do_on_track_filtered(void) {
+    int good = 0;
+    for (int i = 0; i < 6; i++) {
+        if (do_on_track_raw()) {
+            if (++good >= 4) return true;
+        } else {
+            good = 0;
         }
+        sleep_ms(2);
+    }
+    return false;
+}
+
+static bool search_pivot_and_probe_do(bool want_left, uint32_t ms) {
+    disable_pid_control();
+    turn_motor_manual(want_left ? 0 : 1, CONTINUOUS_TURN, SEARCH_PWM, SEARCH_PWM);
+
+    const uint64_t start = time_us_64();
+    const uint64_t limit = (uint64_t)ms * 1000ULL;
+    int good = 0;
+
+    while ((time_us_64() - start) < limit) {
+        if (do_on_track_raw()) {
+            if (++good >= REACQUIRE_GOOD_SAMPLES) {
+                stop_motor_pid();
+                return true;
+            }
+        } else {
+            good = 0;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    stop_motor_pid();
+    vTaskDelay(pdMS_TO_TICKS(40));
+    return false;
+}
+
+static void lineFollowTask(void *pvParameters) {
+    (void)pvParameters;
+
+    int last_turn_dir = 0;           // 0=Left, 1=Right
+    uint32_t first_ms  = STEER_DURATION;
+    uint32_t second_ms = STEER_DURATION + 60;
+    bool needs_second  = false;
+
+    printf("[LF/DO] Start on GP%d. Speed=%.2f, DO_ACTIVE_ON_BLACK=%d\n",
+           LINE_SENSOR_DO_PIN, SLOW_SPEED_CMPS, DO_ACTIVE_ON_BLACK);
+
+    uint64_t last_decide = 0;
+
+    for (;;) {
+        const uint64_t now = time_us_64();
+        if (now - last_decide < (uint64_t)DEBOUNCE_DELAY_MS * 1000ULL) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        last_decide = now;
+
+        bool on_track = do_on_track_filtered();
+
+        if (on_track) {
+            forward_motor_pid(SLOW_SPEED_CMPS);
+            first_ms  = STEER_DURATION;
+            second_ms = STEER_DURATION + 60;
+            needs_second = false;
+
+        } else {
+            stop_motor_pid();
+            reverse_motor_manual(130, 130);
+            vTaskDelay(pdMS_TO_TICKS(REVERSE_MS));
+
+            int prefer_dir = last_turn_dir;
+            bool found = false;
+
+            if (!needs_second) {
+                found = search_pivot_and_probe_do(prefer_dir == 0, first_ms);
+                needs_second = !found;
+                if (found) last_turn_dir = prefer_dir;
+            } else {
+                int alt_dir = 1 - prefer_dir;
+                found = search_pivot_and_probe_do(alt_dir == 0, second_ms);
+                needs_second = false;
+                if (found) last_turn_dir = alt_dir;
+            }
+
+            if (!found) {
+                if (first_ms  < 500) first_ms  += 70;
+                if (second_ms < 520) second_ms += 70;
+            }
+        }
+
         vTaskDelay(pdMS_TO_TICKS(30));
     }
 }
 
-/* ================= Drive task (your testdemo2 logic, slowed) ================
-   - IMU outer-loop heading hold
-   - Inner per-wheel speed PID
-   - Straightness PI
-   - Crawl speed profile + throttle during scanning/after decode
-*/
-typedef struct { float kp,ki,kd, integ, prev_err, out_min,out_max, integ_min,integ_max; } pid_ctrl_t;
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
-static inline int   clampi(int v,int lo,int hi){ return v<lo?lo:(v>hi?hi:v); }
-static inline float ema(float p,float x,float a){ return p*(1.f-a)+x*a; }
-static inline float wrap_deg_pm180(float e){ while(e>180.f)e-=360.f; while(e<-180.f)e+=360.f; return e; }
-static inline float wrap_deg_0_360(float e){ while(e<0.f)e+=360.f; while(e>=360.f)e-=360.f; return e; }
-static inline void  pid_init(pid_ctrl_t*P,float kp,float ki,float kd,float omin,float omax,float imin,float imax){
-    P->kp=kp;P->ki=ki;P->kd=kd;P->integ=0;P->prev_err=0;P->out_min=omin;P->out_max=omax;P->integ_min=imin;P->integ_max=imax;
+// ======================================================================
+// BARCODE SCANNER — EXACT logic lifted from barcode_scanner.c (GP27/ADC1)
+// (unchanged tables, thresholding, 9-element timing, and prints)
+// ======================================================================
+
+#ifndef IR_SENSOR_ADC_PIN
+#define IR_SENSOR_ADC_PIN 27
+#endif
+#ifndef IR_SENSOR_ADC_INPUT
+#define IR_SENSOR_ADC_INPUT 1   // ADC1 is GPIO27
+#endif
+#ifndef ADC_THRESHOLD
+#define ADC_THRESHOLD 2000
+#endif
+
+#define TOTAL_CHAR 44
+#define BARCODE_ELEMENTS 9
+#define BARCODE_BUFFER_SIZE 100
+#define END_OF_BARCODE_TIMEOUT_MS 3000
+
+static char char_array[TOTAL_CHAR] = {
+    '0','1','2','3','4','5','6','7','8','9',
+    'A','B','C','D','E','F','G','H','I','J',
+    'K','L','M','N','O','P','Q','R','S','T',
+    'U','V','W','X','Y','Z','-','.', ' ', '*', '$','/','+','%'
+};
+
+static char *code_array[TOTAL_CHAR] = {
+    "000110100","100100001","001100001","101100000","000110001",
+    "100110000","001110000","000100101","100100100","001100100",
+    "100001001","001001001","101001000","000011001","100011000",
+    "001011000","000001101","100001100","001001100","000011100",
+    "100000011","001000011","101000010","000010011","100010010",
+    "001010010","000000111","100000110","001000110","000010110",
+    "110000001","011000001","111000000","010010001","110010000",
+    "011010000","010000101","110000100","011000100","010010100",
+    "010101000","010100010","010001010","000101010"
+};
+
+static char *reverse_code_array[TOTAL_CHAR] = {
+    "001011000","100001001","100001100","000001101","100011000",
+    "000011001","000011100","101001000","001001001","001001100",
+    "100100001","100100100","000100101","100110000","000110001",
+    "000110100","101100000","001100001","001100100","001110000",
+    "110000001","110000100","010000101","110010000","010010001",
+    "010010100","111000000","011000001","011000100","011010000",
+    "100000011","100000110","000000111","100010010","000010011",
+    "000010110","101000010","001000011","001000110","001010010",
+    "000101010","010001010","010100010","010101000"
+};
+
+static inline uint16_t read_ir_adc(void) {
+    adc_select_input(IR_SENSOR_ADC_INPUT);
+    return adc_read();
 }
-static inline float pid_update(pid_ctrl_t*P,float err,float dt){
-    P->integ = clampf(P->integ + err*dt, P->integ_min, P->integ_max);
-    float u = P->kp*err + P->ki*P->integ + P->kd*((err - P->prev_err)/dt); P->prev_err = err;
-    return clampf(u, P->out_min, P->out_max);
+
+static char decode_barcode(const char *binary_code) {
+    for (int i = 0; i < TOTAL_CHAR; ++i)
+        if (strcmp(binary_code, code_array[i]) == 0) return char_array[i];
+    for (int i = 0; i < TOTAL_CHAR; ++i)
+        if (strcmp(binary_code, reverse_code_array[i]) == 0) return char_array[i];
+    return '?';
 }
 
-static void vDriveTask(void *pv) {
-    // ---- IMU bring-up (same as your testdemo2) ----
-    imu_t imu; imu.i2c=i2c1; imu.i2c_baud=IMU_I2C_BAUD; imu.pin_sda=IMU_SDA_PIN; imu.pin_scl=IMU_SCL_PIN;
-    if (!imu_init(&imu)) { printf("[CTRL] IMU init failed\n"); vTaskDelete(NULL); }
+static void scan_and_print_full_barcode(void) {
+    char decoded_string[BARCODE_BUFFER_SIZE];
+    int char_count = 0;
 
-    // ---- Inner wheel speed PIDs ----
-    pid_ctrl_t pidL, pidR;
-    pid_init(&pidL, SPID_KP, SPID_KI, SPID_KD, SPID_OUT_MIN, SPID_OUT_MAX, -SPID_IWIND_CLAMP, +SPID_IWIND_CLAMP);
-    pid_init(&pidR, SPID_KP, SPID_KI, SPID_KD, SPID_OUT_MIN, SPID_OUT_MAX, -SPID_IWIND_CLAMP, +SPID_IWIND_CLAMP);
+    printf("Waiting for barcode start (black bar after white pre-element)...\n");
 
-    // ---- Lock current heading ----
-    float filt_hdg = 0.f;
-    for (int i=0;i<20;i++){ float h=imu_update_and_get_heading(&imu); h+=HEADING_OFFSET_DEG;
-        h=wrap_deg_0_360(h); filt_hdg=ema(filt_hdg,h,0.20f); vTaskDelay(pdMS_TO_TICKS(10)); }
-    const float target_hdg = filt_hdg;
+    // Wait for the initial white pre-element to pass — YIELD here
+    while (read_ir_adc() > ADC_THRESHOLD) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 
-    float s_int=0.f; int lastL=BASE_PWM_L, lastR=BASE_PWM_R;
-    float h_integ=0.f, h_prev_err=0.f;
+    // Now, wait for the first black bar of the first character — YIELD here
+    while (read_ir_adc() < ADC_THRESHOLD) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 
-    // ---- Crawl profile states ----
-    float v_cmd_state = 0.0f;                // current commanded speed (cm/s), starts from 0
-    const float dt = DT_S;                   // from config.h via LOOP_DT_MS
-    const int loop_ms = LOOP_DT_MS;
+    // Loop to scan multiple characters - continues until end of barcode is detected
+    while (char_count < BARCODE_BUFFER_SIZE - 1) {
+        uint32_t durations[BARCODE_ELEMENTS];
+        char binary_code[BARCODE_ELEMENTS + 1];
+        uint32_t min_duration = 0xFFFFFFFF, max_duration = 0;
 
-    TickType_t last_wake = xTaskGetTickCount();
+        printf("\n--- Scanning Character %d ---\n", char_count + 1);
+
+        // The first bar is black, which we already detected.
+        // Scan the 9 elements of the current character.
+        for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
+            uint16_t current_adc = read_ir_adc();
+            bool is_black = current_adc > ADC_THRESHOLD;
+            const char* color_str = is_black ? "Black" : "White";
+
+            uint32_t start_time = time_us_32();
+
+            // IMPORTANT: keep this inner wait tight for timing accuracy (NO yield)
+            while ((read_ir_adc() > ADC_THRESHOLD) == is_black) {
+                tight_loop_contents();
+            }
+
+            uint32_t end_time = time_us_32();
+            durations[i] = end_time - start_time;
+
+            if (durations[i] < min_duration) min_duration = durations[i];
+            if (durations[i] > max_duration) max_duration = durations[i];
+
+            printf("Element %d: Duration=%-5lu us, Color=%s\n", i, durations[i], color_str);
+        }
+
+        // --- Decode the scanned character ---
+        uint32_t width_threshold = min_duration + (max_duration - min_duration) / 2;
+        for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
+            binary_code[i] = (durations[i] > width_threshold) ? '1' : '0';
+        }
+        binary_code[BARCODE_ELEMENTS] = '\0';
+
+        char decoded_char = decode_barcode(binary_code);
+        printf("Binary: %s -> Decoded: %c\n", binary_code, decoded_char);
+
+        if (decoded_char != '?') {
+            decoded_string[char_count++] = decoded_char;
+        }
+
+        // Inter-character white gap or end — YIELD here
+        printf("Waiting for inter-character white space or end of barcode...\n");
+        uint32_t white_start_time = time_us_32();
+        while (read_ir_adc() < ADC_THRESHOLD) {
+            if (time_us_32() - white_start_time > END_OF_BARCODE_TIMEOUT_MS * 1000) {
+                printf("End of barcode detected (timeout on white space).\n");
+                goto end_of_scan;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
+        printf("Next character detected.\n");
+    }
+
+end_of_scan:
+    decoded_string[char_count] = '\0';
+
+    printf("\n==================================\n");
+    if (char_count > 0) {
+        printf("Final Decoded String: %s\n", decoded_string);
+    } else {
+        printf("No barcode was successfully decoded.\n");
+    }
+    printf("==================================\n\n");
+}
+
+// ===============================
+// BARCODE TASK (calls your exact scanner)
+// ===============================
+#ifndef DRIVE_WHILE_SCANNING
+#define DRIVE_WHILE_SCANNING 1
+#endif
+#ifndef TEST_SPEED_CMPS
+#define TEST_SPEED_CMPS 1.6f
+#endif
+
+static void barcodeTask(void *arg) {
+    (void)arg;
+    printf("[BC] Using EXACT scanner (GP27/ADC1, thr=%d)\n", ADC_THRESHOLD);
+
     for (;;) {
-        // (0) Determine target cruise speed with scan-aware throttle
-        float v_target = CRAWL_V_CMPS;
-
-        // If scanner is busy or just decoded, gently throttle to make edge timing robust
-        uint32_t now_ms = to_ms_since_boot(get_absolute_time());
-        bool recent_decode = (now_ms - g_last_decode_ms) < POST_DECODE_BRAKE_MS;
-        if (!is_scanning_allowed || recent_decode) {
-            v_target = fminf(v_target, SCAN_THROTTLE_CMPS);
-        }
-
-        // (0.1) Accel-limit towards v_target
-        float dv = v_target - v_cmd_state;
-        float max_step = ACCEL_LIMIT_CMPS2 * dt;          // cm/s per loop
-        if (dv >  max_step) dv =  max_step;
-        if (dv < -max_step) dv = -max_step;
-        v_cmd_state += dv;
-
-        // (0.2) Low-pass filter for extra smoothness
-        float v_cmd = ema(v_cmd_state, v_target, V_LPF_ALPHA);
-
-        // (1) Heading filter
-        float raw = imu_update_and_get_heading(&imu) + HEADING_OFFSET_DEG;
-        raw = wrap_deg_0_360(raw); filt_hdg = ema(filt_hdg, raw, HDG_EMA_ALPHA);
-
-        // (2) Outer heading PID -> delta_w
-        float h_err = wrap_deg_pm180(target_hdg - filt_hdg);
-        if (fabsf(h_err) < HEADING_DEADBAND_DEG) h_err = 0.f;
-        float h_deriv = (h_err - h_prev_err) / dt; h_prev_err = h_err;
-        if (KI_HEADING > 0.f) {
-            float clamp = 150.0f / (KI_HEADING > 1e-6f ? KI_HEADING : 1e-6f);
-            h_integ = clampf(h_integ + h_err*dt, -clamp, +clamp);
-        }
-        float d_heading_rate_deg_s = KP_HEADING*h_err + KI_HEADING*h_integ + KD_HEADING*h_deriv;
-        float delta_w = d_heading_rate_deg_s * (float)M_PI/180.0f * HEADING_RATE_SCALE;
-
-        // (3) Split v, w to L/R targets (cm/s)
-        float diff_cmps = (0.5f * TRACK_WIDTH_M * delta_w) * 100.0f;
-        float vL_t = v_cmd - diff_cmps, vR_t = v_cmd + diff_cmps;
-
-        // (4) Measured speeds (cm/s)
-        float vL_m = get_left_speed(), vR_m = get_right_speed();
-
-        // (5) Inner speed PIDs
-        float uL = pid_update(&pidL, vL_t - vL_m, dt);
-        float uR = pid_update(&pidR, vR_t - vR_m, dt);
-
-        // (6) Straightness PI (encoder mismatch)
-        float s_err = (vR_m - vL_m);
-        s_int = clampf(s_int + s_err*dt, -STRAIGHT_I_CLAMP, STRAIGHT_I_CLAMP);
-        float s_trim = STRAIGHT_KP*s_err + STRAIGHT_KI*s_int + GLOBAL_S_TRIM_OFFSET;
-
-        // (7) Final PWM + LOCAL clamp + LOCAL slew
-        int pwmL = (int)lroundf(BASE_PWM_L + uL + s_trim);
-        int pwmR = (int)lroundf(BASE_PWM_R + uR - s_trim);
-
-        // First apply your global config clamps
-        pwmL = clampi(pwmL, PWM_MIN_LEFT,  PWM_MAX_LEFT);
-        pwmR = clampi(pwmR, PWM_MIN_RIGHT, PWM_MAX_RIGHT);
-
-        // Then apply local “crawl” clamps to keep it gentle
-        pwmL = clampi(pwmL, LOCAL_PWM_MIN_LEFT,  LOCAL_PWM_MAX_LEFT);
-        pwmR = clampi(pwmR, LOCAL_PWM_MIN_RIGHT, LOCAL_PWM_MAX_RIGHT);
-
-        // Slew limit (tighter than before)
-        int dL = pwmL - lastL, dR = pwmR - lastR;
-        if (dL >  LOCAL_MAX_PWM_STEP) pwmL = lastL + LOCAL_MAX_PWM_STEP;
-        if (dL < -LOCAL_MAX_PWM_STEP) pwmL = lastL - LOCAL_MAX_PWM_STEP;
-        if (dR >  LOCAL_MAX_PWM_STEP) pwmR = lastR + LOCAL_MAX_PWM_STEP;
-        if (dR < -LOCAL_MAX_PWM_STEP) pwmR = lastR - LOCAL_MAX_PWM_STEP;
-
-        forward_motor_manual(pwmL, pwmR);
-        lastL = pwmL; lastR = pwmR;
-
-        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(loop_ms));
+#if DRIVE_WHILE_SCANNING
+        // Optional: crawl gently while scanning so timing is stable
+        forward_motor_pid(TEST_SPEED_CMPS);
+#endif
+        scan_and_print_full_barcode();   // ← exact logic from barcode_scanner.c
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 }
 
+// ===============================
+// MAIN
+// ===============================
 int main(void) {
     stdio_init_all();
-    sleep_ms(600);
+    sleep_ms(400);
 
-    // ---- Drive stack (from your testdemo2/demo1) ----
-    motor_init();
+    // Line sensor (digital DO on GP28)
+    init_line_digital();
+
+    // Barcode ADC (GP27 / ADC1)
+    adc_init();
+    adc_gpio_init(IR_SENSOR_ADC_PIN);
+    adc_select_input(IR_SENSOR_ADC_INPUT);
+
     encoder_init();
+    motor_init();
 
-    // ---- Barcode stack: semaphore + task + IRQ on IR_SENSOR_PIN ----
-    barcode_init();     // creates semaphore, starts scanner task, enables scan gate
-    init_barcode_irq(); // attaches ISR on rising+falling edges for IR_SENSOR_PIN
+    xTaskCreate(lineFollowTask, "LineFollow",
+                configMINIMAL_STACK_SIZE * 4, NULL,
+                tskIDLE_PRIORITY + 1, NULL);
 
-    is_scanning_allowed = true;  // explicit
+    xTaskCreate(barcodeTask, "Barcode",
+                configMINIMAL_STACK_SIZE * 4, NULL,
+                tskIDLE_PRIORITY + 2, NULL);
 
-    // ---- Tasks ----
-    xTaskCreate(vDriveTask,        "DriveTask",     2048, NULL, 1, NULL);
-    xTaskCreate(vBarcodeEventTask, "BarcodeEvent",  1024, NULL, 1, NULL);
-
+    printf("[MAIN] LF (DO on GP28) + Barcode (ADC1 on GP27) ready.\n");
     vTaskStartScheduler();
-
-    while (true) { printf("Scheduler exited!\n"); sleep_ms(1000); }
+    while (true) { tight_loop_contents(); }
+    return 0;
 }
