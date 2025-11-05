@@ -268,6 +268,7 @@ end_of_scan:
 }
 
 // Main function to set up and run the scanner
+#ifndef INTEGRATED_BUILD
 int main() {
     stdio_init_all();
     sleep_ms(2000); // Wait for console to connect
@@ -285,3 +286,4 @@ int main() {
 
     return 0;
 }
+#endif // INTEGRATED_BUILD

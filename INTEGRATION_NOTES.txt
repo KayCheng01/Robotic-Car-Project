@@ -1,0 +1,220 @@
+Integration Complete - Quick Reference
+
+ARCHITECTURE
+============
+
+Line Following:
+- Uses GPIO28 digital output (DO) from IR line sensor
+- GPIO IRQ on both edges updates line_state flag
+- No ADC usage, no conflicts
+- FreeRTOS task polls line_state at ~30-100 Hz
+
+Barcode Scanning:
+- Uses GPIO27 (ADC1) analog input
+- ADC+DMA samples at 15 kHz continuously
+- Edge detection in DMA ISR with hysteresis
+- FreeRTOS task processes edge events and decodes Code39
+- No conflicts with line sensor
+
+Motors & Encoders:
+- Unchanged from original implementation
+- Motor PID runs in FreeRTOS task
+- Encoder IRQs update speed/distance data
+
+
+FILES CREATED
+=============
+
+src/line_sensor.h/c
+  - GPIO IRQ-based digital line sensor interface
+  - line_sensor_init() and line_sensor_is_on_track()
+
+src/adc_barcode.h/c
+  - ADC+DMA module for GPIO27/ADC1
+  - Edge detection with hysteresis
+  - Pushes events to FreeRTOS queue
+  - adc_barcode_init(), adc_barcode_start(), adc_barcode_stop()
+
+src/barcode_task.h/c
+  - FreeRTOS task that consumes edge events
+  - Decodes Code39 barcodes using original lookup tables
+  - barcode_task_create(), barcode_get_result()
+
+src/main_integrated.c
+  - Unified application entry point
+  - Creates lineFollowTask, barcodeTask, monitorTask
+  - Initializes all hardware modules
+
+src/CMakeLists.txt
+  - Build configuration for all executables
+  - main_integrated (integrated app)
+  - demo2v4 (standalone line follow)
+  - barcode_scanner (standalone barcode)
+  - main (IMU-based control)
+
+
+FILES MODIFIED
+==============
+
+src/demo2v4.c
+  - Guarded main() with #ifndef INTEGRATED_BUILD
+
+src/barcode_scanner.c
+  - Guarded main() with #ifndef INTEGRATED_BUILD
+
+
+HARDWARE WIRING
+===============
+
+Line Sensor:
+  - VCC → 3.3V
+  - GND → GND
+  - DO (digital output) → GPIO28
+  - Adjust potentiometer: DO=HIGH on black, DO=LOW on white
+
+Barcode Sensor:
+  - VCC → 3.3V
+  - GND → GND
+  - Analog out → GPIO27 (ADC1)
+  - Calibrate: ~300-800 on white, ~2500-3500 on black
+
+
+BUILD TARGETS
+=============
+
+main_integrated.uf2
+  - Full integrated system
+  - Line following + barcode scanning concurrently
+  - Drag to RPI-RP2 drive
+
+demo2v4.uf2
+  - Standalone ADC-based line following (original)
+  
+barcode_scanner.uf2
+  - Standalone barcode scanner (original)
+
+main.uf2
+  - IMU-based straight-line control (original)
+
+
+BUILD COMMANDS
+==============
+
+cd build
+cmake ..
+make main_integrated
+
+Output: build/src/main_integrated.uf2
+
+
+USAGE
+=====
+
+1. Flash main_integrated.uf2 to Pico
+2. Connect via USB serial (115200 baud)
+3. Place robot on line with barcode
+4. Watch for:
+   - "[LF] Digital line-follow ready..." 
+   - "[BARCODE] Task started"
+   - "[MONITOR] Barcode decoded: ..."
+5. Robot follows line continuously
+6. Barcodes decode without stopping
+
+
+TUNING
+======
+
+Line Sensor (line_sensor.c):
+  - Adjust hardware potentiometer for clean HIGH/LOW transitions
+  - Monitor GPIO28 with scope/multimeter
+
+Barcode Sensor (adc_barcode.c):
+  - BARCODE_ADC_THRESHOLD (default 2000)
+  - BARCODE_ADC_HYSTERESIS (default 150)
+  - MIN_PULSE_WIDTH_US (default 30, glitch filter)
+  - BARCODE_SAMPLE_RATE_HZ (default 15000)
+
+Line Following (main_integrated.c):
+  - SLOW_SPEED_CMPS (default 2.0)
+  - SEARCH_PWM (default 50)
+  - STEER_DURATION (default 70ms)
+  - DEBOUNCE_DELAY_MS (default 120ms)
+
+Debug Output (barcode_task.c):
+  - #define BARCODE_DEBUG for verbose output
+  - Comment out for production (less USB blocking)
+
+
+TROUBLESHOOTING
+===============
+
+Line sensor not responding:
+  - Check GPIO28 wiring
+  - Verify DO signal: HIGH on black, LOW on white
+  - Adjust potentiometer
+  - Check gpio_put(LINE_SENSOR_DO_PIN) in scope
+
+Barcode not decoding:
+  - Check GPIO27 wiring (analog)
+  - Print raw ADC values: printf("%d\n", adc_read())
+  - Verify threshold (should be ~2000 for typical IR)
+  - Ensure barcode is printed clearly
+  - Try slower speed initially
+
+Queue overruns:
+  - Increase EDGE_QUEUE_SIZE in adc_barcode.c
+  - Reduce BARCODE_SAMPLE_RATE_HZ
+  - Increase barcode task priority
+
+Robot stops on barcode:
+  - It shouldn't! Both tasks run concurrently
+  - Check for printf blocking (disable BARCODE_DEBUG)
+  - Verify motor PID still running
+
+USB serial hangs:
+  - Too much printf output
+  - Disable BARCODE_DEBUG
+  - Throttle monitor task prints
+
+
+TESTING SEQUENCE
+================
+
+1. Bench test (no movement):
+   - Power on, watch serial output
+   - Wave hand over line sensor → "[LF]" messages
+   - Wave hand over barcode sensor → edge events
+
+2. Line-only test:
+   - Place on black line, no barcode
+   - Should follow smoothly
+   - Verify PID stability
+
+3. Barcode-only test:
+   - Print Code39 barcode (*TEST*)
+   - Drive slowly over it on white background
+   - Should decode and print "TEST"
+
+4. Combined test:
+   - Tape barcode across black line
+   - Robot follows line
+   - Barcode decodes without stopping
+   - Check "[MONITOR] Barcode decoded: ..."
+
+5. Stress test:
+   - Multiple barcodes on line
+   - Sharp corners after barcode
+   - Variable speeds
+
+
+CODE39 TEST BARCODES
+====================
+
+Print these to test:
+  *0*     (single digit)
+  *TEST*  (letters)
+  *12*    (two digits)
+  *ABC*   (three letters)
+
+Each barcode must start/end with * (start/stop character)
+Use online Code39 generator or print with barcode font

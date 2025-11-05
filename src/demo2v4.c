@@ -175,9 +175,11 @@ static void lineFollowTask(void *pvParameters) {
 }
 
 // ======== Main ========
+#ifndef INTEGRATED_BUILD
 int main(void) {
     stdio_init_all();
-    sleep_ms(400);
+    sleep_ms(5000);
+    printf("[MAIN] DEBUG\n");
 
     init_line_adc();
     encoder_init();  // your encoders already register IRQs inside here
@@ -192,3 +194,4 @@ int main(void) {
     while (true) { tight_loop_contents(); }
     return 0;
 }
+#endif // INTEGRATED_BUILD
