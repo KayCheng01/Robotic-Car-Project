@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/NgKay/Documents/Pico-v1.5.1/pico-extras/src/common/pico_audio
+# Install script for directory: C:/Users/robii/Documents/Pico-v1.5.1/pico-extras/src/common/pico_audio
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

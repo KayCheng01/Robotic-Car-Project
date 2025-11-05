@@ -39,10 +39,10 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk/tools/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk/src/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico_extras/src/cmake_install.cmake")
-  include("C:/Users/NgKay/OneDrive/Documents/Robotic-Car-Project/build/pico-sdk/docs/cmake_install.cmake")
+  include("C:/Users/robii/Documents/github_repos/embedded/Robotic-Car-Project/build/pico-sdk/tools/cmake_install.cmake")
+  include("C:/Users/robii/Documents/github_repos/embedded/Robotic-Car-Project/build/pico-sdk/src/cmake_install.cmake")
+  include("C:/Users/robii/Documents/github_repos/embedded/Robotic-Car-Project/build/pico_extras/src/cmake_install.cmake")
+  include("C:/Users/robii/Documents/github_repos/embedded/Robotic-Car-Project/build/pico-sdk/docs/cmake_install.cmake")
 
 endif()
 

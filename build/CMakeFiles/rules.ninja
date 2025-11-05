@@ -123,6 +123,129 @@ rule CXX_STATIC_LIBRARY_LINKER__motor_lib_Debug
 #############################################
 # Rule for compiling ASM files.
 
+rule ASM_COMPILER__main_integrated_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out   -c $in
+  description = Building ASM object $out
+
+
+#############################################
+# Rule for compiling C files.
+
+rule C_COMPILER__main_integrated_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building C object $out
+
+
+#############################################
+# Rule for compiling CXX files.
+
+rule CXX_COMPILER__main_integrated_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR10B2~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building CXX object $out
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_LINKER__main_integrated_Debug
+  command = cmd.exe /C "$PRE_LINK && C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR10B2~1.EXE $FLAGS -Wl,--build-id=none $LINK_FLAGS @$RSP_FILE -o $TARGET_FILE  && $POST_BUILD"
+  description = Linking CXX executable $TARGET_FILE
+  rspfile = $RSP_FILE
+  rspfile_content = $in $LINK_PATH $LINK_LIBRARIES
+  restat = $RESTAT
+
+
+#############################################
+# Rule for compiling ASM files.
+
+rule ASM_COMPILER__demo2v4_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out   -c $in
+  description = Building ASM object $out
+
+
+#############################################
+# Rule for compiling C files.
+
+rule C_COMPILER__demo2v4_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building C object $out
+
+
+#############################################
+# Rule for compiling CXX files.
+
+rule CXX_COMPILER__demo2v4_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR10B2~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building CXX object $out
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_LINKER__demo2v4_Debug
+  command = cmd.exe /C "$PRE_LINK && C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR10B2~1.EXE $FLAGS -Wl,--build-id=none $LINK_FLAGS @$RSP_FILE -o $TARGET_FILE  && $POST_BUILD"
+  description = Linking CXX executable $TARGET_FILE
+  rspfile = $RSP_FILE
+  rspfile_content = $in $LINK_PATH $LINK_LIBRARIES
+  restat = $RESTAT
+
+
+#############################################
+# Rule for compiling ASM files.
+
+rule ASM_COMPILER__barcode_scanner_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out   -c $in
+  description = Building ASM object $out
+
+
+#############################################
+# Rule for compiling C files.
+
+rule C_COMPILER__barcode_scanner_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building C object $out
+
+
+#############################################
+# Rule for compiling CXX files.
+
+rule CXX_COMPILER__barcode_scanner_Debug
+  depfile = $DEP_FILE
+  deps = gcc
+  command = C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR10B2~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
+  description = Building CXX object $out
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_LINKER__barcode_scanner_Debug
+  command = cmd.exe /C "$PRE_LINK && C:\PROGRA~1\RASPBE~1\PICOSD~1.1\GCC-AR~1\bin\AR10B2~1.EXE $FLAGS -Wl,--build-id=none $LINK_FLAGS @$RSP_FILE -o $TARGET_FILE  && $POST_BUILD"
+  description = Linking CXX executable $TARGET_FILE
+  rspfile = $RSP_FILE
+  rspfile_content = $in $LINK_PATH $LINK_LIBRARIES
+  restat = $RESTAT
+
+
+#############################################
+# Rule for compiling ASM files.
+
 rule ASM_COMPILER__main_Debug
   depfile = $DEP_FILE
   deps = gcc
@@ -405,7 +528,7 @@ rule CXX_STATIC_LIBRARY_LINKER__servo_lib_Debug
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = "C:\Program Files\Raspberry Pi\Pico SDK v1.5.1\cmake\bin\cmake.exe" --regenerate-during-build -SC:\Users\NgKay\OneDrive\Documents\Robotic-Car-Project -BC:\Users\NgKay\OneDrive\Documents\Robotic-Car-Project\build
+  command = "C:\Program Files\Raspberry Pi\Pico SDK v1.5.1\cmake\bin\cmake.exe" --regenerate-during-build -SC:\Users\robii\Documents\github_repos\embedded\Robotic-Car-Project -BC:\Users\robii\Documents\github_repos\embedded\Robotic-Car-Project\build
   description = Re-running CMake...
   generator = 1
 
