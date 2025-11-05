@@ -54,21 +54,26 @@
 #define V_TARGET_MPS         0.20f
 #define V_TARGET_CMPS        (V_TARGET_MPS * 100.0f)
 
-// --- Heading PID (same as testDemo1) ---
-#ifndef KP_HEADING
-#define KP_HEADING           0.30f
-#endif
-#ifndef KI_HEADING
-#define KI_HEADING           0.00f
-#endif
-#ifndef KD_HEADING
-#define KD_HEADING           0.18f
-#endif
-#define HEADING_DEADBAND_DEG 2.0f
-#define HDG_EMA_ALPHA        0.20f
-#define DEG2RAD              (float)(M_PI / 180.0f)
-#define HEADING_OFFSET_DEG   20.0f
-#define HEADING_RATE_SCALE   0.02f    // gentle scale
+// --- Heading PID - Safe mode (minimal correction, just go straight) ---
+#define KP_HEADING_SAFE      0.15f    // Very gentle - just keep straight
+#define KI_HEADING_SAFE      0.00f    // No integral in safe mode
+#define KD_HEADING_SAFE      0.10f    // Light damping
+
+// --- Heading PID - Recovery mode (return to initial direction) ---
+#define KP_HEADING_RECOVERY  2.50f    // VERY strong correction to get back on track
+#define KI_HEADING_RECOVERY  0.15f    // Higher integral to eliminate steady-state error quickly
+#define KD_HEADING_RECOVERY  0.80f    // High derivative to prevent overshoot
+
+// --- Mode switching thresholds ---
+#define HEADING_DEADBAND_DEG     2.0f   // Deadband in safe mode
+#define RECOVERY_TRIGGER_DEG     10.0f  // Enter recovery if deviation > 10° from initial
+#define SAFE_RETURN_DEG          3.0f   // Return to safe mode if within 3° of initial
+
+#define HDG_EMA_ALPHA            0.20f
+#define DEG2RAD                  (float)(M_PI / 180.0f)
+#define HEADING_OFFSET_DEG       20.0f
+#define HEADING_RATE_SCALE_SAFE     0.015f  // Very gentle in safe mode
+#define HEADING_RATE_SCALE_RECOVERY 0.15f   // VERY aggressive in recovery mode
 
 // --- Wheel-speed inner PID (same as testDemo1) ---
 #define SPID_OUT_MIN         0.0f
@@ -275,23 +280,35 @@ static void vDriveTask(void *pvParameters) {
     pid_init(&pidR, SPID_KP, SPID_KI, SPID_KD,
              SPID_OUT_MIN, SPID_OUT_MAX, -SPID_IWIND_CLAMP, +SPID_IWIND_CLAMP);
 
-    // ---- Capture target heading (smoothed) ----
-    float filt_hdg = 0.f;
-    for (int i = 0; i < 20; ++i){
+    // ---- Capture target heading (average of multiple readings) ----
+    printf("[CTRL] Capturing initial heading...\n");
+    float heading_sum = 0.0f;
+    int num_samples = 50;  // Take 50 samples over 500ms
+    
+    for (int i = 0; i < num_samples; ++i){
         float h = imu_update_and_get_heading(&imu);
         h += HEADING_OFFSET_DEG;
         h = wrap_deg_0_360(h);
-        filt_hdg = ema(filt_hdg, h, 0.20f);
+        heading_sum += h;
         vTaskDelay(pdMS_TO_TICKS(10));
     }
-    const float target_heading_deg = filt_hdg;
-    printf("[CTRL] Target heading = %.1f deg (corrected)\n", (double)target_heading_deg);
+    
+    const float target_heading_deg = heading_sum / (float)num_samples;
+    printf("[CTRL] Target heading = %.1f deg (averaged from %d samples)\n", 
+           (double)target_heading_deg, num_samples);
+    
+    // Initialize filtered heading to target
+    float filt_hdg = target_heading_deg;
 
     // ---- Controllers' state ----
     float h_integ = 0.f, h_prev_err = 0.f; // outer IMU PID
     float s_int   = 0.0f;                  // straightness PI
     int   lastL   = PWM_MIN_LEFT;
     int   lastR   = PWM_MIN_RIGHT;
+    
+    // ---- Correction mode tracking ----
+    bool recovery_mode = false;  // false = safe mode, true = recovery mode
+    float safe_mode_reference = filt_hdg;  // Track current heading in safe mode
 
     // ---- Telemetry running state ----
     float dist_cm = 0.0f;
@@ -306,22 +323,59 @@ static void vDriveTask(void *pvParameters) {
         raw_hdg = wrap_deg_0_360(raw_hdg);
         filt_hdg = ema(filt_hdg, raw_hdg, HDG_EMA_ALPHA);
 
-        float h_err = wrap_deg_pm180(target_heading_deg - filt_hdg);
-        if (fabsf(h_err) < HEADING_DEADBAND_DEG) h_err = 0.f;
+        // === Determine deviation from INITIAL heading ===
+        float deviation_from_initial = wrap_deg_pm180(target_heading_deg - filt_hdg);
+        float abs_deviation = fabsf(deviation_from_initial);
+        
+        // === Mode switching logic ===
+        if (!recovery_mode && abs_deviation > RECOVERY_TRIGGER_DEG) {
+            // Large deviation detected - enter RECOVERY mode
+            recovery_mode = true;
+            printf("[CTRL] *** RECOVERY MODE ENGAGED (deviation=%.1f deg from initial) ***\n", (double)abs_deviation);
+            // Reset integral when switching modes to prevent windup
+            h_integ = 0.0f;
+        } else if (recovery_mode && abs_deviation < SAFE_RETURN_DEG) {
+            // Back on track - return to SAFE mode
+            recovery_mode = false;
+            safe_mode_reference = filt_hdg;  // Update safe mode reference to current heading
+            printf("[CTRL] --- Safe mode restored (deviation=%.1f deg) ---\n", (double)abs_deviation);
+            // Reset integral when switching modes
+            h_integ = 0.0f;
+        }
+        
+        // === Calculate heading error based on mode ===
+        float h_err;
+        if (recovery_mode) {
+            // RECOVERY: steer back to initial heading
+            h_err = deviation_from_initial;
+        } else {
+            // SAFE: just go straight (track current heading, update reference gradually)
+            safe_mode_reference = ema(safe_mode_reference, filt_hdg, 0.05f);  // Slowly adapt
+            h_err = wrap_deg_pm180(safe_mode_reference - filt_hdg);
+            // Apply deadband in safe mode
+            if (fabsf(h_err) < HEADING_DEADBAND_DEG) {
+                h_err = 0.f;
+            }
+        }
+        
+        // Select PID gains based on mode
+        float kp = recovery_mode ? KP_HEADING_RECOVERY : KP_HEADING_SAFE;
+        float ki = recovery_mode ? KI_HEADING_RECOVERY : KI_HEADING_SAFE;
+        float kd = recovery_mode ? KD_HEADING_RECOVERY : KD_HEADING_SAFE;
+        float rate_scale = recovery_mode ? HEADING_RATE_SCALE_RECOVERY : HEADING_RATE_SCALE_SAFE;
 
         float h_deriv = (h_err - h_prev_err) / DT_S;
         h_prev_err = h_err;
 
-        if (KI_HEADING > 0.f){
-            float h_iw = 150.0f / fmaxf(KI_HEADING, 1e-6f);
+        // Integral with anti-windup
+        if (ki > 0.f){
+            float h_iw = 150.0f / fmaxf(ki, 1e-6f);
             h_integ += h_err * DT_S;
             h_integ = clampf(h_integ, -h_iw, +h_iw);
         }
 
-        float delta_heading_rate_deg_s =
-            KP_HEADING * h_err + KI_HEADING * h_integ + KD_HEADING * h_deriv;
-
-        float delta_w = delta_heading_rate_deg_s * DEG2RAD * HEADING_RATE_SCALE;
+        float delta_heading_rate_deg_s = kp * h_err + ki * h_integ + kd * h_deriv;
+        float delta_w = delta_heading_rate_deg_s * DEG2RAD * rate_scale;
 
         // === 2) Command v (cm/s) ===
         const float v_cmd_cmps = V_TARGET_CMPS;
@@ -372,10 +426,11 @@ static void vDriveTask(void *pvParameters) {
         static int div = 0;
         if ((div++ % (1000/LOOP_DT_MS/5)) == 0) {
             // USB serial (human-readable)
-            printf("[CTRL] hdg=%.1f(raw=%.1f) herr=%.2f dW=%.3f  v=%.1f  "
+            printf("[CTRL] %s hdg=%.1f(raw=%.1f) dev=%.1f herr=%.2f dW=%.3f  v=%.1f  "
                    "vL[t/m]=%.2f/%.2f  vR[t/m]=%.2f/%.2f  dist=%.1f  "
                    "s_err=%.2f s_int=%.2f str=%.2f  PWM[L=%d R=%d]\n",
-                   (double)filt_hdg, (double)raw_hdg, (double)h_err, (double)delta_w,
+                   recovery_mode ? "[RCV]" : "[SAFE]",
+                   (double)filt_hdg, (double)raw_hdg, (double)abs_deviation, (double)h_err, (double)delta_w,
                    (double)v_cmd_cmps,
                    (double)vL_target, (double)vL_meas,
                    (double)vR_target, (double)vR_meas,
@@ -415,9 +470,11 @@ int main(void){
     setvbuf(stdout, NULL, _IONBF, 0);
     sleep_ms(800);
 
-    printf("\n[BOOT] Demo1 single-file: FreeRTOS + MQTT. "
-           "HeadingPID(%.2f/%.2f/%.2f)  SpeedPID(%.2f/%.2f/%.2f)\n",
-           (double)KP_HEADING, (double)KI_HEADING, (double)KD_HEADING,
+    printf("\n[BOOT] Demo1 single-file: FreeRTOS + MQTT + Dual-Mode Control\n");
+    printf("       Safe Mode PID(%.2f/%.2f/%.2f) | Recovery Mode PID(%.2f/%.2f/%.2f)\n",
+           (double)KP_HEADING_SAFE, (double)KI_HEADING_SAFE, (double)KD_HEADING_SAFE,
+           (double)KP_HEADING_RECOVERY, (double)KI_HEADING_RECOVERY, (double)KD_HEADING_RECOVERY);
+    printf("       SpeedPID(%.2f/%.2f/%.2f)\n",
            (double)SPID_KP, (double)SPID_KI, (double)SPID_KD);
 
     g_mqtt_mutex = xSemaphoreCreateMutex();
