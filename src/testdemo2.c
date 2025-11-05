@@ -1,7 +1,7 @@
 // =============================================
 // testdemo2_merged.c
 // - Keeps your existing Demo2v4 line-follow from testdemo2.c (GP28 DO)
-// - Adds EXACT Code-39 scanner logic from barcode_scanner.c on GP27/ADC1
+// - Adds robust Code-39 scanner on GP27/ADC1 (auto-cal + hysteresis + ratio)
 // =============================================
 
 #include <stdio.h>
@@ -19,10 +19,9 @@
 #include "encoder.h"
 
 // ===============================
-// LINE-FOLLOW (from your testdemo2.c)
-// (unchanged logic; using DO on GP28)
+// LINE-FOLLOW (your existing DO on GP28)
 // ===============================
-#define LINE_SENSOR_DO_PIN     28  // If you were using DO; keep as in your testdemo2.c
+#define LINE_SENSOR_DO_PIN     28  // keep as in your testdemo2.c
 #ifndef DO_ACTIVE_ON_BLACK
 #define DO_ACTIVE_ON_BLACK     0   // 1 if DO=LOW on black; 0 if DO=HIGH on black
 #endif
@@ -69,6 +68,20 @@ static bool do_on_track_filtered(void) {
     return false;
 }
 
+// Task handle for interrupt notification
+static TaskHandle_t lineFollowTaskHandle = NULL;
+
+// GPIO interrupt handler for line sensor
+static void line_sensor_isr(uint gpio, uint32_t events) {
+    (void)gpio;
+    (void)events;
+    
+    // Notify the line follow task that sensor state changed
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    vTaskNotifyGiveFromISR(lineFollowTaskHandle, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
 static bool search_pivot_and_probe_do(bool want_left, uint32_t ms) {
     disable_pid_control();
     turn_motor_manual(want_left ? 0 : 1, CONTINUOUS_TURN, SEARCH_PWM, SEARCH_PWM);
@@ -102,15 +115,24 @@ static void lineFollowTask(void *pvParameters) {
     uint32_t second_ms = STEER_DURATION + 60;
     bool needs_second  = false;
 
-    printf("[LF/DO] Start on GP%d. Speed=%.2f, DO_ACTIVE_ON_BLACK=%d\n",
+    printf("[LF/DO] Start on GP%d. Speed=%.2f, DO_ACTIVE_ON_BLACK=%d (INTERRUPT MODE)\n",
            LINE_SENSOR_DO_PIN, SLOW_SPEED_CMPS, DO_ACTIVE_ON_BLACK);
+
+    // Enable GPIO interrupt for line sensor (both edges)
+    gpio_set_irq_enabled_with_callback(LINE_SENSOR_DO_PIN, 
+                                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+                                       true, &line_sensor_isr);
 
     uint64_t last_decide = 0;
 
     for (;;) {
+        // Wait for interrupt notification (blocks until sensor change or timeout)
+        // Timeout every 100ms to handle cases where we're already off-track
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+
         const uint64_t now = time_us_64();
+        // Debounce: ignore changes too close together
         if (now - last_decide < (uint64_t)DEBOUNCE_DELAY_MS * 1000ULL) {
-            vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
         last_decide = now;
@@ -148,13 +170,14 @@ static void lineFollowTask(void *pvParameters) {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(30));
+        // Small delay to allow motor commands to take effect
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
 // ======================================================================
-// BARCODE SCANNER — EXACT logic lifted from barcode_scanner.c (GP27/ADC1)
-// (unchanged tables, thresholding, 9-element timing, and prints)
+// BARCODE SCANNER — robust Code 39 (GP27/ADC1)
+// (keeps your tables; swaps in auto-cal + hysteresis + ratio classification)
 // ======================================================================
 
 #ifndef IR_SENSOR_ADC_PIN
@@ -164,7 +187,7 @@ static void lineFollowTask(void *pvParameters) {
 #define IR_SENSOR_ADC_INPUT 1   // ADC1 is GPIO27
 #endif
 #ifndef ADC_THRESHOLD
-#define ADC_THRESHOLD 2000
+#define ADC_THRESHOLD 2000      // still used in logs; hysteresis handles edges
 #endif
 
 #define TOTAL_CHAR 44
@@ -203,18 +226,183 @@ static char *reverse_code_array[TOTAL_CHAR] = {
     "000101010","010001010","010100010","010101000"
 };
 
+// ---------- Robust helpers: hysteresis + voting, ratio widths ----------
+// Using pre-calibrated threshold values (auto-calibration disabled)
+static uint16_t g_bc_thr_lo = 1700, g_bc_thr_hi = 2300; // pre-calibrated fixed values
+static bool     g_bc_state_black = false;               // last debounced state
+
+static inline bool bc_read_is_black(void) {
+    // Single sample with Schmitt trigger (hysteresis) for narrow lines
+    adc_select_input(IR_SENSOR_ADC_INPUT);
+    uint16_t v = adc_read();
+    bool sample_black = g_bc_state_black
+                        ? (v > g_bc_thr_lo)    // to leave black, must drop below TH_LO
+                        : (v > g_bc_thr_hi);   // to enter black, must rise above TH_HI
+    g_bc_state_black = sample_black;
+    return sample_black;
+}
+
+// ========== Classification Methods ==========
+
+// Method 1: K-means clustering (most robust for varying speeds)
+static void classify_widths_kmeans(uint32_t *dur, char *bits9) {
+    // Use k-means with k=2 to find narrow and wide clusters
+    uint32_t narrow_center = dur[0];
+    uint32_t wide_center = dur[0];
+    
+    // Find initial centers (min and max)
+    for (int i = 0; i < 9; i++) {
+        if (dur[i] < narrow_center) narrow_center = dur[i];
+        if (dur[i] > wide_center) wide_center = dur[i];
+    }
+    
+    // Iterate k-means (3 iterations usually sufficient)
+    for (int iter = 0; iter < 3; iter++) {
+        uint32_t narrow_sum = 0, wide_sum = 0;
+        int narrow_count = 0, wide_count = 0;
+        
+        for (int i = 0; i < 9; i++) {
+            uint32_t dist_narrow = (dur[i] > narrow_center) ? (dur[i] - narrow_center) : (narrow_center - dur[i]);
+            uint32_t dist_wide = (dur[i] > wide_center) ? (dur[i] - wide_center) : (wide_center - dur[i]);
+            
+            if (dist_narrow < dist_wide) {
+                narrow_sum += dur[i];
+                narrow_count++;
+            } else {
+                wide_sum += dur[i];
+                wide_count++;
+            }
+        }
+        
+        if (narrow_count > 0) narrow_center = narrow_sum / narrow_count;
+        if (wide_count > 0) wide_center = wide_sum / wide_count;
+    }
+    
+    // Classify using threshold between centers
+    uint32_t threshold = (narrow_center + wide_center) / 2;
+    for (int i = 0; i < 9; i++)
+        bits9[i] = (dur[i] > threshold) ? '1' : '0';
+    bits9[9] = '\0';
+    
+    printf("K-means: narrow_center=%lu, wide_center=%lu, threshold=%lu\n", 
+           narrow_center, wide_center, threshold);
+}
+
+// Method 2: Simple min/max midpoint (fastest, good for stable speeds)
+static void classify_widths_minmax(uint32_t *dur, char *bits9) {
+    uint32_t min_dur = 0xFFFFFFFF, max_dur = 0;
+    
+    for (int i = 0; i < 9; i++) {
+        if (dur[i] < min_dur) min_dur = dur[i];
+        if (dur[i] > max_dur) max_dur = dur[i];
+    }
+    
+    uint32_t threshold = min_dur + (max_dur - min_dur) / 2;
+    for (int i = 0; i < 9; i++)
+        bits9[i] = (dur[i] > threshold) ? '1' : '0';
+    bits9[9] = '\0';
+    
+    printf("MinMax: min=%lu, max=%lu, threshold=%lu\n", min_dur, max_dur, threshold);
+}
+
+// Method 3: Ratio-based (original method, tunable K)
+static void classify_widths_ratio(uint32_t *dur, char *bits9, float K) {
+    uint32_t d[9];
+    for (int i = 0; i < 9; i++) d[i] = dur[i];
+    // insertion sort
+    for (int i = 1; i < 9; i++) {
+        uint32_t x = d[i]; int j = i - 1;
+        while (j >= 0 && d[j] > x) { d[j+1] = d[j]; j--; }
+        d[j+1] = x;
+    }
+    uint32_t narrow_base = (d[0] + d[1] + d[2] + d[3]) / 4;
+    uint32_t threshold = (uint32_t)(K * narrow_base);
+    
+    for (int i = 0; i < 9; i++)
+        bits9[i] = (dur[i] > threshold) ? '1' : '0';
+    bits9[9] = '\0';
+    
+    printf("Ratio (K=%.2f): narrow_base=%lu, threshold=%lu\n", K, narrow_base, threshold);
+}
+
+// Method 4: Median-based (robust to outliers)
+static void classify_widths_median(uint32_t *dur, char *bits9) {
+    uint32_t d[9];
+    for (int i = 0; i < 9; i++) d[i] = dur[i];
+    // insertion sort
+    for (int i = 1; i < 9; i++) {
+        uint32_t x = d[i]; int j = i - 1;
+        while (j >= 0 && d[j] > x) { d[j+1] = d[j]; j--; }
+        d[j+1] = x;
+    }
+    
+    // Use median as threshold (5th element when sorted)
+    uint32_t threshold = d[4];
+    for (int i = 0; i < 9; i++)
+        bits9[i] = (dur[i] > threshold) ? '1' : '0';
+    bits9[9] = '\0';
+    
+    printf("Median: threshold=%lu\n", threshold);
+}
+
+// Select which method to use (change this to test different methods)
+#define CLASSIFICATION_METHOD 1  // 1=K-means, 2=MinMax, 3=Ratio, 4=Median
+
+static void classify_widths(uint32_t *dur, char *bits9) {
+#if CLASSIFICATION_METHOD == 1
+    classify_widths_kmeans(dur, bits9);
+#elif CLASSIFICATION_METHOD == 2
+    classify_widths_minmax(dur, bits9);
+#elif CLASSIFICATION_METHOD == 3
+    classify_widths_ratio(dur, bits9, 1.65f);  // Adjust K value (1.5-2.0)
+#elif CLASSIFICATION_METHOD == 4
+    classify_widths_median(dur, bits9);
+#else
+    classify_widths_kmeans(dur, bits9);  // Default to K-means
+#endif
+}
+
+// ---------- Decoder ----------
 static inline uint16_t read_ir_adc(void) {
     adc_select_input(IR_SENSOR_ADC_INPUT);
     return adc_read();
 }
 
 static char decode_barcode(const char *binary_code) {
-    for (int i = 0; i < TOTAL_CHAR; ++i)
-        if (strcmp(binary_code, code_array[i]) == 0) return char_array[i];
-    for (int i = 0; i < TOTAL_CHAR; ++i)
-        if (strcmp(binary_code, reverse_code_array[i]) == 0) return char_array[i];
+    // First check forward direction
+    for (int i = 0; i < TOTAL_CHAR; ++i) {
+        if (strcmp(binary_code, code_array[i]) == 0) {
+            printf("  -> Matched code_array[%d] = '%s' => Character '%c'\n", i, code_array[i], char_array[i]);
+            return char_array[i];
+        }
+    }
+    
+    // Then check reverse direction
+    for (int i = 0; i < TOTAL_CHAR; ++i) {
+        if (strcmp(binary_code, reverse_code_array[i]) == 0) {
+            printf("  -> Matched reverse_code_array[%d] = '%s' => Character '%c' (reversed scan)\n", i, reverse_code_array[i], char_array[i]);
+            return char_array[i];
+        }
+    }
+    
+    // No match found - print what we tried to decode
+    printf("  -> NO MATCH FOUND for binary '%s'\n", binary_code);
+    printf("  -> Closest matches in code_array:\n");
+    for (int i = 0; i < TOTAL_CHAR && i < 5; ++i) {
+        int diff_count = 0;
+        for (int j = 0; j < 9; j++) {
+            if (binary_code[j] != code_array[i][j]) diff_count++;
+        }
+        if (diff_count <= 2) {
+            printf("     [%d] '%c': %s (differs by %d bits)\n", i, char_array[i], code_array[i], diff_count);
+        }
+    }
+    
     return '?';
 }
+
+// ---------- Scanner (continuous multi-character scan) ----------
+#define MAX_CHARS_TO_SCAN 3  // Number of characters to scan in one go
 
 static void scan_and_print_full_barcode(void) {
     char decoded_string[BARCODE_BUFFER_SIZE];
@@ -222,20 +410,21 @@ static void scan_and_print_full_barcode(void) {
 
     printf("Waiting for barcode start (black bar after white pre-element)...\n");
 
-    // Wait for the initial white pre-element to pass — YIELD here
-    while (read_ir_adc() > ADC_THRESHOLD) {
-        vTaskDelay(pdMS_TO_TICKS(1));
+    // Wait for initial white - check periodically to not hog CPU
+    while (bc_read_is_black()) { 
+        vTaskDelay(pdMS_TO_TICKS(5));  // Check every 5ms while waiting
+    }
+    
+    // Wait for first black - check periodically
+    while (!bc_read_is_black()) { 
+        vTaskDelay(pdMS_TO_TICKS(5));  // Check every 5ms while waiting
     }
 
-    // Now, wait for the first black bar of the first character — YIELD here
-    while (read_ir_adc() < ADC_THRESHOLD) {
-        vTaskDelay(pdMS_TO_TICKS(1));
-    }
+    printf("\n--- Scanning up to %d characters ---\n", MAX_CHARS_TO_SCAN);
 
-    // Loop to scan multiple characters - continues until end of barcode is detected
-    while (char_count < BARCODE_BUFFER_SIZE - 1) {
+    // Loop to scan multiple characters - same logic as barcode_scanner.c
+    while (char_count < MAX_CHARS_TO_SCAN && char_count < BARCODE_BUFFER_SIZE - 1) {
         uint32_t durations[BARCODE_ELEMENTS];
-        char binary_code[BARCODE_ELEMENTS + 1];
         uint32_t min_duration = 0xFFFFFFFF, max_duration = 0;
 
         printf("\n--- Scanning Character %d ---\n", char_count + 1);
@@ -243,17 +432,16 @@ static void scan_and_print_full_barcode(void) {
         // The first bar is black, which we already detected.
         // Scan the 9 elements of the current character.
         for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
-            uint16_t current_adc = read_ir_adc();
-            bool is_black = current_adc > ADC_THRESHOLD;
+            bool is_black = bc_read_is_black();
             const char* color_str = is_black ? "Black" : "White";
-
+            
             uint32_t start_time = time_us_32();
-
-            // IMPORTANT: keep this inner wait tight for timing accuracy (NO yield)
-            while ((read_ir_adc() > ADC_THRESHOLD) == is_black) {
+            
+            // Wait for the color to change
+            while (bc_read_is_black() == is_black) {
                 tight_loop_contents();
             }
-
+            
             uint32_t end_time = time_us_32();
             durations[i] = end_time - start_time;
 
@@ -264,38 +452,60 @@ static void scan_and_print_full_barcode(void) {
         }
 
         // --- Decode the scanned character ---
-        uint32_t width_threshold = min_duration + (max_duration - min_duration) / 2;
-        for (int i = 0; i < BARCODE_ELEMENTS; ++i) {
-            binary_code[i] = (durations[i] > width_threshold) ? '1' : '0';
-        }
-        binary_code[BARCODE_ELEMENTS] = '\0';
+        char bits9[BARCODE_ELEMENTS + 1];
+        classify_widths(durations, bits9);
 
-        char decoded_char = decode_barcode(binary_code);
-        printf("Binary: %s -> Decoded: %c\n", binary_code, decoded_char);
+        char decoded_char = decode_barcode(bits9);
+        printf("Binary: %s -> Decoded: %c\n", bits9, decoded_char);
 
         if (decoded_char != '?') {
             decoded_string[char_count++] = decoded_char;
         }
 
-        // Inter-character white gap or end — YIELD here
+        // --- Check for end of barcode or next character ---
+        // After scanning 9 elements, we need to find the inter-character gap (white space)
         printf("Waiting for inter-character white space or end of barcode...\n");
+        
+        // First, ensure we're on a white space (skip any remaining black)
+        bool currently_black = bc_read_is_black();
+        if (currently_black) {
+            printf("Still on black, waiting for white...\n");
+            while (bc_read_is_black()) {
+                tight_loop_contents();
+            }
+        }
+        
+        // Now we're on white space - wait for next black (next char) or timeout (end of barcode)
         uint32_t white_start_time = time_us_32();
-        while (read_ir_adc() < ADC_THRESHOLD) {
+        while (!bc_read_is_black()) {
             if (time_us_32() - white_start_time > END_OF_BARCODE_TIMEOUT_MS * 1000) {
                 printf("End of barcode detected (timeout on white space).\n");
-                goto end_of_scan;
+                goto end_of_scan; // End of barcode detected
             }
-            vTaskDelay(pdMS_TO_TICKS(1));
+            tight_loop_contents();
         }
-        printf("Next character detected.\n");
+        printf("Next character detected (black bar found).\n");
     }
 
 end_of_scan:
     decoded_string[char_count] = '\0';
-
     printf("\n==================================\n");
+    printf("BARCODE SCAN COMPLETE\n");
+    printf("==================================\n");
     if (char_count > 0) {
-        printf("Final Decoded String: %s\n", decoded_string);
+        printf("Characters decoded: %d\n", char_count);
+        printf("Final Decoded String: '%s'\n", decoded_string);
+        printf("\nDetailed breakdown:\n");
+        for (int i = 0; i < char_count; i++) {
+            // Find the character in char_array
+            for (int j = 0; j < TOTAL_CHAR; j++) {
+                if (decoded_string[i] == char_array[j]) {
+                    printf("  [%d] '%c' -> code_array[%d] = %s\n", 
+                           i, decoded_string[i], j, code_array[j]);
+                    break;
+                }
+            }
+        }
     } else {
         printf("No barcode was successfully decoded.\n");
     }
@@ -303,10 +513,10 @@ end_of_scan:
 }
 
 // ===============================
-// BARCODE TASK (calls your exact scanner)
+// BARCODE TASK
 // ===============================
 #ifndef DRIVE_WHILE_SCANNING
-#define DRIVE_WHILE_SCANNING 1
+#define DRIVE_WHILE_SCANNING 0  // Set to 0 - let line following control motors
 #endif
 #ifndef TEST_SPEED_CMPS
 #define TEST_SPEED_CMPS 1.6f
@@ -314,15 +524,22 @@ end_of_scan:
 
 static void barcodeTask(void *arg) {
     (void)arg;
-    printf("[BC] Using EXACT scanner (GP27/ADC1, thr=%d)\n", ADC_THRESHOLD);
+    printf("[BC] Robust scanner (GP27/ADC1). Using pre-calibrated thresholds: TH_LO=%u TH_HI=%u\n", 
+           g_bc_thr_lo, g_bc_thr_hi);
+
+    // Let motors/PID settle before starting scan
+    vTaskDelay(pdMS_TO_TICKS(1000));
 
     for (;;) {
 #if DRIVE_WHILE_SCANNING
-        // Optional: crawl gently while scanning so timing is stable
+        // Gentle crawl while scanning
         forward_motor_pid(TEST_SPEED_CMPS);
 #endif
-        scan_and_print_full_barcode();   // ← exact logic from barcode_scanner.c
-        vTaskDelay(pdMS_TO_TICKS(300));
+        scan_and_print_full_barcode();
+        
+        // Long delay between scans to let line following task run
+        printf("[BC] Scan complete. Waiting 3 seconds before next scan...\n");
+        vTaskDelay(pdMS_TO_TICKS(3000));  // Wait 3 seconds between scans
     }
 }
 
@@ -331,7 +548,7 @@ static void barcodeTask(void *arg) {
 // ===============================
 int main(void) {
     stdio_init_all();
-    sleep_ms(400);
+    sleep_ms(6000);
 
     // Line sensor (digital DO on GP28)
     init_line_digital();
@@ -344,15 +561,16 @@ int main(void) {
     encoder_init();
     motor_init();
 
+    // Create line follow task and store its handle for ISR notification
     xTaskCreate(lineFollowTask, "LineFollow",
                 configMINIMAL_STACK_SIZE * 4, NULL,
-                tskIDLE_PRIORITY + 1, NULL);
+                tskIDLE_PRIORITY + 2, &lineFollowTaskHandle);  // Higher priority for line following
 
     xTaskCreate(barcodeTask, "Barcode",
                 configMINIMAL_STACK_SIZE * 4, NULL,
-                tskIDLE_PRIORITY + 2, NULL);
+                tskIDLE_PRIORITY + 1, NULL);  // Lower priority for barcode
 
-    printf("[MAIN] LF (DO on GP28) + Barcode (ADC1 on GP27) ready.\n");
+    printf("[MAIN] LF (Interrupt on GP28) + Barcode (Polling ADC1 on GP27) ready.\n");
     vTaskStartScheduler();
     while (true) { tight_loop_contents(); }
     return 0;
