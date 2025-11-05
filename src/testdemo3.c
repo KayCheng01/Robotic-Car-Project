@@ -1,11 +1,12 @@
 // ==============================
-// demo2v4_with_width.c — IR Line Follow (ADC) + Width Scan on Obstacle
+// demo2v4_with_width.c — IR Line Follow (ADC) + Width Scan on Obstacle + MQTT
 // ==============================
 // - Keeps your exact demo2v4 ADC-only line-follow logic
 // - When the ultrasonic at center (90°) detects an obstacle within threshold,
 //   it pauses the robot, runs the edge-scan refinement from test_obstacle_width_cosine.c
 //   to measure LEFT and RIGHT widths, prints results, then resumes line-follow.
 // - Uses your calibrated headers (servo.h, ultrasonic.h, motor/encoder) as-is.
+// - Added WiFi and MQTT support to publish obstacle detection data
 // ==============================
 
 #include <stdio.h>
@@ -13,15 +14,31 @@
 #include <math.h>
 
 #include "pico/stdlib.h"
+#include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "lwip/ip_addr.h"
+#include "lwip/apps/mqtt.h"
+#include "lwip/inet.h"
+
 #include "motor.h"
 #include "encoder.h"
 #include "servo.h"
 #include "ultrasonic.h"
+
+// ======== WiFi & MQTT CONFIG ========
+#define WIFI_SSID "iPhone"
+#define WIFI_PASS "yo1234567"
+#define WIFI_CONNECT_TIMEOUT_MS 20000
+#define BROKER_IP_STR  "172.20.10.3"  // your wifi IP
+#define BROKER_PORT    1883
+
+static mqtt_client_t *mqtt_client;
+static volatile bool mqtt_connected = false;
+static volatile bool system_initialized = false;
 
 // ======== demo2v4 CONFIG (unchanged) ========
 #ifndef LINE_SENSOR_PIN
@@ -71,6 +88,55 @@
 #define MAX_DETECTION_DISTANCE_CM       100.0f
 #define EDGE_CONFIRMATION_SAMPLES       5
 #define CONSISTENCY_THRESHOLD_CM        10.0f
+
+// ============== WiFi & MQTT Functions ==============
+static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
+    if (status == MQTT_CONNECT_ACCEPTED) {
+        printf("[MQTT] Connected successfully!\n");
+        mqtt_connected = true;
+    } else {
+        printf("[MQTT] Connection failed, status: %d\n", status);
+        mqtt_connected = false;
+    }
+}
+
+static void mqtt_pub_request_cb(void *arg, err_t result) {
+    printf("[MQTT] Publish result: %d\n", result);
+}
+
+static bool wifi_connect_blocking(uint32_t timeout_ms) {
+    printf("[WIFI] Connecting to %s...\n", WIFI_SSID);
+    int err = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS,
+                                                 CYW43_AUTH_WPA2_AES_PSK,
+                                                 timeout_ms);
+    if (err) {
+        printf("[WIFI] Connect failed err=%d\n", err);
+        return false;
+    }
+    printf("[WIFI] Connected!\n");
+    return true;
+}
+
+static void mqtt_publish_obstacle_data(float left_width, float right_width, float total_width, float distance) {
+    if (!mqtt_connected) {
+        printf("[MQTT] Not connected, skipping publish\n");
+        return;
+    }
+
+    char payload[128];
+    snprintf(payload, sizeof(payload), 
+             "L:%.2f,R:%.2f,T:%.2f,D:%.2f", 
+             left_width, right_width, total_width, distance);
+
+    const char *topic = "pico/obstacle";
+    err_t perr = mqtt_publish(mqtt_client, topic, payload, strlen(payload), 
+                             0, 0, mqtt_pub_request_cb, NULL);
+    if (perr != ERR_OK) {
+        printf("[MQTT] Publish error=%d\n", perr);
+    } else {
+        printf("[MQTT] Published to %s: %s\n", topic, payload);
+    }
+}
 
 // ============== ADC init & helpers (demo2v4) ==============
 static inline void init_line_adc(void) {
@@ -298,6 +364,9 @@ static void run_width_scan_sequence(float adjacent) {
     printf("\n[RESULT] LEFT=%.2f cm, RIGHT=%.2f cm  →  TOTAL WIDTH=%.2f cm\n",
            left_w, right_w, total_w);
 
+    // Publish obstacle data via MQTT
+    mqtt_publish_obstacle_data(left_w, right_w, total_w, adjacent);
+
     servo_set_angle(SERVO_CENTER_ANGLE);
     sleep_ms(300);
 }
@@ -305,6 +374,11 @@ static void run_width_scan_sequence(float adjacent) {
 // ============== Line-follow Task (demo2v4) with obstacle hook ==============
 static void lineFollowTask(void *pvParameters) {
     (void)pvParameters;
+
+    // Wait for system initialization
+    while (!system_initialized) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 
     int last_turn_dir = 0;
     uint32_t first_ms  = STEER_DURATION;
@@ -369,25 +443,103 @@ static void lineFollowTask(void *pvParameters) {
     }
 }
 
-// ======== Main ========
-int main(void) {
-    stdio_init_all();
-    sleep_ms(400);
+// ============== MQTT Task ==============
+static void mqttTask(void *pvParameters) {
+    (void)pvParameters;
 
+    // Wait for system initialization
+    while (!system_initialized) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    mqtt_client = mqtt_client_new();
+    if (!mqtt_client) {
+        printf("[MQTT] Failed to create client\n");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ip_addr_t broker_ip;
+    ipaddr_aton(BROKER_IP_STR, &broker_ip);
+
+    struct mqtt_connect_client_info_t ci = {
+        .client_id   = "pico-robot-car",
+        .client_user = NULL,
+        .client_pass = NULL,
+        .keep_alive  = 30,
+    };
+
+    printf("[MQTT] Connecting to broker %s:%u...\n", BROKER_IP_STR, BROKER_PORT);
+    mqtt_client_connect(mqtt_client, &broker_ip, BROKER_PORT, 
+                       mqtt_connection_cb, NULL, &ci);
+
+    // Keep task alive
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+// ============== Initialization Task ==============
+static void initTask(void *pvParameters) {
+    (void)pvParameters;
+
+    stdio_init_all();
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    printf("\n[INIT] Starting initialization...\n");
+
+    // Initialize WiFi
+    if (cyw43_arch_init()) {
+        printf("[INIT] cyw43 init failed\n");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    cyw43_wifi_pm(&cyw43_state, CYW43_NO_POWERSAVE_MODE);
+    cyw43_arch_enable_sta_mode();
+
+    if (!wifi_connect_blocking(WIFI_CONNECT_TIMEOUT_MS)) {
+        printf("[INIT] Wi-Fi failed - continuing without MQTT\n");
+        // Continue anyway
+    }
+
+    // Initialize robot hardware
     init_line_adc();
     encoder_init();
     motor_init();
-
     servo_init();
     ultrasonic_init();
     servo_set_angle(SERVO_CENTER_ANGLE);
 
+    printf("[INIT] All systems initialized!\n");
+    system_initialized = true;
+
+    // Blink LED to show it's alive
+    for (;;) {
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(250));
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+        vTaskDelay(pdMS_TO_TICKS(250));
+    }
+}
+
+// ======== Main ========
+int main(void) {
+    // Create initialization task (highest priority)
+    xTaskCreate(initTask, "init", 4096, NULL, tskIDLE_PRIORITY + 3, NULL);
+
+    // Create MQTT task
+    xTaskCreate(mqttTask, "mqtt", 4096, NULL, tskIDLE_PRIORITY + 2, NULL);
+
+    // Create line follow task
     xTaskCreate(lineFollowTask, "LineFollow",
                 configMINIMAL_STACK_SIZE * 5,
                 NULL, tskIDLE_PRIORITY + 1, NULL);
 
-    printf("[MAIN] IR line-follow + width-scan ready.\n");
+    printf("[MAIN] Starting scheduler...\n");
     vTaskStartScheduler();
-    while (true) { tight_loop_contents(); }
+    
+    while (true) {
+        printf("ERROR: Scheduler exited!\n");
+    }
     return 0;
 }
